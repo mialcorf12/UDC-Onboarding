@@ -24,7 +24,7 @@ The uDesign Cloud onboarding portal needs to create a complete customer record (
 
 ```json
 {
-  "onboard-type": "udesign.cloud",
+  "onboard_type": "udesign.cloud",
   "is_parent": "true",
   "org_name": "uDesign Cloud India cc test",
   "org_type": "Orthodontist",
@@ -83,7 +83,7 @@ The uDesign Cloud onboarding portal needs to create a complete customer record (
 | `billing_zip` | `BillingPostalCode` | Text | |
 | `signature_required` | `Signature_Required__c` | Checkbox | String `"true"/"false"` → Boolean conversion required |
 | `out_of_service_area` | `Out_of_Service_Area__c` | Checkbox | String `"true"/"false"` → Boolean conversion required |
-| `onboard-type` = `"udesign.cloud"` | `UDC_Onboarding__c` | Checkbox | Set to `true` when value equals `"udesign.cloud"`; otherwise `false` |
+| `onboard_type` = `"udesign.cloud"` | `UDC_Onboarding__c` | Checkbox | Set to `true` when value equals `"udesign.cloud"`; otherwise `false` |
 | *(hardcoded)* | `RecordTypeId` | Lookup | Resolved to `Commercial` via `SObjectType.Account.getRecordTypeInfosByDeveloperName()` |
 | `shipping_name` | — | — | **Discarded** — redundant with `org_name` |
 | `billing_name` | — | — | **Discarded** — redundant with `org_name` |
@@ -106,7 +106,7 @@ The uDesign Cloud onboarding portal needs to create a complete customer record (
 | `mailing_zipcode` | `MailingPostalCode` | Text | |
 | `user_type` = `"Customer Account Owner"` | `Company_User_Type__c` | Picklist | Mapped to `"Account Owner"` (confirmed) |
 | `role` | `Contact_Role__c` | Picklist | Direct mapping; `"Orthodontist"` is active in Record Type `Commercial` |
-| `onboard-type` = `"udesign.cloud"` *(from root)* | `UDC_Onboarding__c` | Checkbox | Set to `true` when root `onboard-type` equals `"udesign.cloud"`; otherwise `false` |
+| `onboard_type` = `"udesign.cloud"` *(from root)* | `UDC_Onboarding__c` | Checkbox | Set to `true` when root `onboard_type` equals `"udesign.cloud"`; otherwise `false` |
 | *(hardcoded)* | `RecordTypeId` | Lookup | Resolved to `Commercial` via `SObjectType.Contact.getRecordTypeInfosByDeveloperName()` |
 | `mailing_name` | — | — | **Discarded** — redundant with `first_name` + `last_name` |
 | `mailing_phone` | — | — | **Discarded** — redundant with `user.phone` |
@@ -119,7 +119,7 @@ The uDesign Cloud onboarding portal needs to create a complete customer record (
 ```gherkin
 Given  the portal sends a POST with valid org_name, org_status, user.last_name, user.email,
        user_type "Customer Account Owner", role "Orthodontist",
-       and onboard-type "udesign.cloud"
+       and onboard_type "udesign.cloud"
 When   the service processes the payload
 Then   it returns HTTP 201
 And    the response body includes success: true, accountId and contactId
@@ -135,7 +135,7 @@ And    Contact.Contact_Role__c equals "Orthodontist"
 **Scenario 2 — UDC Onboarding flag: onboard-type is absent or not "udesign.cloud"**
 ```gherkin
 Given  the portal sends a POST with all required fields
-And    "onboard-type" is absent, null, or any value other than "udesign.cloud"
+And    "onboard_type" is absent, null, or any value other than "udesign.cloud"
 When   the service processes the payload
 Then   it returns HTTP 201
 And    Account.UDC_Onboarding__c equals false
@@ -230,7 +230,7 @@ And    no orphan records exist in Salesforce
 - [ ] `with sharing` declared explicitly on the Apex REST class
 - [ ] FLS and CRUD checked for Account and Contact (all fields written)
 - [ ] Record Type resolved via `getRecordTypeInfosByDeveloperName()` — no hardcoded IDs
-- [ ] `UDC_Onboarding__c` evaluated from root `onboard-type` before any DML; set on both Account and Contact
+- [ ] `UDC_Onboarding__c` evaluated from root `onboard_type` before any DML; set on both Account and Contact
 - [ ] `user_type: "Customer Account Owner"` mapped to `Company_User_Type__c = 'Account Owner'` in Apex code
 - [ ] String-to-Boolean conversion applied to `is_parent`, `signature_required`, `out_of_service_area` before DML
 - [ ] Savepoint defined before first DML; `Database.rollback()` executed on any subsequent failure
