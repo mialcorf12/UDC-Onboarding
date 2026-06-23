@@ -8,8 +8,9 @@
  * creation fails after Account insertion.
  *
  * HTTP status contract:
- *   201 — Account + Contact created successfully
+ *   201 — Account + Contact created (or Account updated + Contact created) successfully
  *   400 — Input validation failed (no DML executed)
+ *   404 — org_sfdc_id provided but Account not found in Salesforce
  *   500 — DML error; transaction rolled back
  *
  * API Version: 66.0
@@ -52,6 +53,7 @@ global with sharing class UdcOnboardingService {
         public String billing_zip;
         public String signature_required;
         public String out_of_service_area;
+        public String org_sfdc_id;
         public ContactRequest user;
     }
 
@@ -101,13 +103,22 @@ global with sharing class UdcOnboardingService {
     /**
      * Handles POST requests to /services/apexrest/UdcOnboardingService/
      *
-     * Flow:
-     *   1. Deserialize JSON body into OnboardingRequest
-     *   2. Validate required fields and email format → 400 on failure
+     * Flow — Branch A (org_sfdc_id blank/null): create new Account + Contact
+     *   1. Deserialize JSON body
+     *   2. Validate required fields and email → 400 on failure
      *   3. Set savepoint
-     *   4. Insert Account (with FLS check) → 500 on failure
-     *   5. Insert Contact linked to Account (with FLS check) → rollback + 500 on failure
-     *   6. Return 201 with accountId and contactId
+     *   4. Insert Account (FLS-checked) → 500 on failure
+     *   5. Insert Contact linked to Account (FLS-checked) → rollback + 500 on failure
+     *   6. Return 201
+     *
+     * Flow — Branch B (org_sfdc_id has value): update existing Account + create Contact
+     *   1. Deserialize JSON body
+     *   2. Validate required fields and email → 400 on failure
+     *   3. SOQL lookup by Account Id → 404 if not found
+     *   4. Set savepoint
+     *   5. Update existing Account (FLS-checked) → rollback + 500 on failure
+     *   6. Insert Contact linked to existing Account (FLS-checked) → rollback + 500 on failure
+     *   7. Return 201
      */
     @HttpPost
     global static OnboardingResponse handlePost() {
@@ -141,63 +152,60 @@ global with sharing class UdcOnboardingService {
             .get('Commercial')
             .getRecordTypeId();
 
-        // Compute the UDC onboarding flag once — used on both records
+        // Compute the UDC onboarding flag once — used on both Account and Contact
         Boolean isUdcOnboarding = (req.onboard_type == 'udesign.cloud');
 
-        // Step 4: Build the Account record
+        // =====================================================================
+        // BRANCH DECISION: org_sfdc_id present → update existing Account
+        //                  org_sfdc_id blank/null → create new Account
+        // =====================================================================
+        if (String.isNotBlank(req.org_sfdc_id)) {
+            return handleExistingAccount(req, res, contactRecordTypeId, isUdcOnboarding);
+        } else {
+            return handleNewAccount(req, res, accountRecordTypeId, contactRecordTypeId, isUdcOnboarding);
+        }
+    }
+
+    // =========================================================================
+    // Branch A — Create new Account + Contact
+    // =========================================================================
+
+    /**
+     * Branch A: org_sfdc_id is blank/null.
+     * Creates a new Account and a linked Contact atomically.
+     * Uses a savepoint to roll back the Account if Contact insert fails.
+     */
+    private static OnboardingResponse handleNewAccount(
+        OnboardingRequest req,
+        RestResponse res,
+        Id accountRecordTypeId,
+        Id contactRecordTypeId,
+        Boolean isUdcOnboarding
+    ) {
+        // Build the Account record from payload
         Account acc = new Account();
-        acc.RecordTypeId        = accountRecordTypeId;
-        acc.Name                = req.org_name;
-        acc.Type                = req.org_type;
-        acc.Account_Status__c   = req.org_status;
-        acc.Phone               = req.phone;
+        acc.RecordTypeId = accountRecordTypeId;
+        applyAccountFields(acc, req, isUdcOnboarding);
 
-        // String → Boolean coercion for checkbox fields
-        // Payload sends "true"/"false" as strings; Apex checkboxes require Boolean.
-        acc.Is_Parent__c            = (req.is_parent        == 'true');
-        acc.Signature_Required__c   = (req.signature_required == 'true');
-        acc.Out_of_Service_Area__c  = (req.out_of_service_area == 'true');
-
-        // UDC flag
-        acc.UDC_Onboarding__c = isUdcOnboarding;
-
-        // Shipping address
-        acc.ShippingStreet      = req.shipping_address_1;
-        acc.ShippingCity        = req.shipping_city;
-        acc.ShippingCountry     = req.shipping_country;
-        acc.ShippingState       = req.shipping_region;
-        acc.ShippingPostalCode  = req.shipping_zip;
-
-        // Billing address
-        acc.BillingStreet       = req.billing_address_1;
-        acc.BillingCity         = req.billing_city;
-        acc.BillingCountry      = req.billing_country;
-        acc.BillingState        = req.billing_region;
-        acc.BillingPostalCode   = req.billing_zip;
-
-        // Step 5: Set savepoint before first DML to enable atomic rollback
+        // Set savepoint before first DML to enable atomic rollback
         Savepoint sp = Database.setSavepoint();
 
-        // Step 6: FLS enforcement on Account, then insert.
-        // stripInaccessible removes user-input fields the running user cannot write,
-        // satisfying FLS requirements for with sharing classes (REQ-8).
-        // UDC_Onboarding__c is a system-set flag (not from user input), so it is
-        // reassigned after stripping to guarantee it survives profile-level FLS.
+        // FLS enforcement on Account, then insert.
+        // UDC_Onboarding__c is a system-set flag — reapplied after FLS strip
+        // because stripInaccessible may remove it if the running user's profile
+        // restricts the field. The endpoint always controls this flag; it cannot
+        // be injected by the caller.
         SObjectAccessDecision accDecision = Security.stripInaccessible(
             AccessType.CREATABLE,
             new List<SObject>{ acc }
         );
         Account accToInsert = (Account) accDecision.getRecords()[0];
-        // Reapply system-controlled flag after FLS strip — this field is always
-        // set by the endpoint logic, never by the caller, so bypassing FLS here
-        // is intentional and safe. The flag cannot be injected maliciously.
         accToInsert.UDC_Onboarding__c = isUdcOnboarding;
 
         try {
             insert accToInsert;
         } catch (DmlException e) {
-            // Account insert failed — no records were written; no rollback needed.
-            // getDmlMessage(0) returns the user-facing platform error (REQ-7).
+            // Account insert failed — no records written; no rollback needed.
             res.statusCode = 500;
             OnboardingResponse errResp = new OnboardingResponse();
             errResp.success   = false;
@@ -207,14 +215,148 @@ global with sharing class UdcOnboardingService {
             return errResp;
         }
 
-        // Step 7: Build the Contact record, linked to the inserted Account
+        // Build and insert Contact linked to the new Account
+        Contact conToInsert = buildContact(req, accToInsert.Id, contactRecordTypeId, isUdcOnboarding);
+        return insertContact(conToInsert, sp, res, accToInsert.Id, 'Account and Contact created successfully.');
+    }
+
+    // =========================================================================
+    // Branch B — Update existing Account + create Contact
+    // =========================================================================
+
+    /**
+     * Branch B: org_sfdc_id has a value.
+     * Looks up the Account by the provided Salesforce Id.
+     * Returns 404 if not found. Updates the Account and creates a linked Contact atomically.
+     */
+    private static OnboardingResponse handleExistingAccount(
+        OnboardingRequest req,
+        RestResponse res,
+        Id contactRecordTypeId,
+        Boolean isUdcOnboarding
+    ) {
+        // SOQL lookup — never create an Account in this branch
+        List<Account> existing = [
+            SELECT Id, RecordTypeId, Name, Type, Account_Status__c, Phone,
+                   Is_Parent__c, Signature_Required__c, Out_of_Service_Area__c,
+                   UDC_Onboarding__c,
+                   ShippingStreet, ShippingCity, ShippingCountry, ShippingState, ShippingPostalCode,
+                   BillingStreet, BillingCity, BillingCountry, BillingState, BillingPostalCode
+            FROM Account
+            WHERE Id = :req.org_sfdc_id
+            LIMIT 1
+        ];
+
+        if (existing.isEmpty()) {
+            res.statusCode = 404;
+            OnboardingResponse errResp = new OnboardingResponse();
+            errResp.success   = false;
+            errResp.errorCode = 'ACCOUNT_NOT_FOUND';
+            errResp.message   = 'Account ' + req.org_sfdc_id + ' not found in Salesforce.';
+            return errResp;
+        }
+
+        // Apply payload values onto the retrieved Account record
+        Account acc = existing[0];
+        applyAccountFields(acc, req, isUdcOnboarding);
+
+        // Set savepoint before DML to cover update + Contact insert atomically
+        Savepoint sp = Database.setSavepoint();
+
+        // FLS enforcement on Account update.
+        // UDC_Onboarding__c reapplied after strip for the same reason as Branch A.
+        SObjectAccessDecision accDecision = Security.stripInaccessible(
+            AccessType.UPDATABLE,
+            new List<SObject>{ acc }
+        );
+        Account accToUpdate = (Account) accDecision.getRecords()[0];
+        accToUpdate.UDC_Onboarding__c = isUdcOnboarding;
+
+        try {
+            update accToUpdate;
+        } catch (DmlException e) {
+            // Account update failed — roll back to savepoint (no Contact inserted yet)
+            Database.rollback(sp);
+            res.statusCode = 500;
+            OnboardingResponse errResp = new OnboardingResponse();
+            errResp.success   = false;
+            errResp.errorCode = 'SALESFORCE_DML_ERROR';
+            errResp.message   = 'The transaction was rolled back. Original Salesforce error: '
+                                + e.getDmlMessage(0);
+            return errResp;
+        }
+
+        // Build and insert Contact linked to the existing Account
+        Contact conToInsert = buildContact(req, accToUpdate.Id, contactRecordTypeId, isUdcOnboarding);
+        return insertContact(conToInsert, sp, res, accToUpdate.Id, 'Account updated and Contact created successfully.');
+    }
+
+    // =========================================================================
+    // Shared Helpers
+    // =========================================================================
+
+    /**
+     * Applies all payload field values onto an Account record (new or existing).
+     * Called by both Branch A and Branch B to avoid duplication.
+     * Does NOT set RecordTypeId — Branch A sets it on construction; Branch B
+     * preserves the existing RecordType already on the record.
+     *
+     * @param acc              The Account sObject to populate (mutated in place)
+     * @param req              The deserialized request payload
+     * @param isUdcOnboarding  Pre-computed UDC flag value
+     */
+    private static void applyAccountFields(Account acc, OnboardingRequest req, Boolean isUdcOnboarding) {
+        acc.Name              = req.org_name;
+        acc.Type              = req.org_type;
+        acc.Account_Status__c = req.org_status;
+        acc.Phone             = req.phone;
+
+        // String → Boolean coercion: payload sends "true"/"false" as strings
+        acc.Is_Parent__c           = (req.is_parent           == 'true');
+        acc.Signature_Required__c  = (req.signature_required  == 'true');
+        acc.Out_of_Service_Area__c = (req.out_of_service_area == 'true');
+
+        // UDC flag set by endpoint logic (not by caller)
+        acc.UDC_Onboarding__c = isUdcOnboarding;
+
+        // Shipping address
+        acc.ShippingStreet     = req.shipping_address_1;
+        acc.ShippingCity       = req.shipping_city;
+        acc.ShippingCountry    = req.shipping_country;
+        acc.ShippingState      = req.shipping_region;
+        acc.ShippingPostalCode = req.shipping_zip;
+
+        // Billing address
+        acc.BillingStreet     = req.billing_address_1;
+        acc.BillingCity       = req.billing_city;
+        acc.BillingCountry    = req.billing_country;
+        acc.BillingState      = req.billing_region;
+        acc.BillingPostalCode = req.billing_zip;
+    }
+
+    /**
+     * Builds a Contact record from the request payload.
+     * Shared by both Branch A and Branch B.
+     *
+     * @param req               The deserialized request payload
+     * @param accountId         The Account Id to link the Contact to
+     * @param contactRecordTypeId  Resolved RecordType Id for Contact
+     * @param isUdcOnboarding   Pre-computed UDC flag value
+     * @return                  A populated (not yet inserted) Contact
+     */
+    private static Contact buildContact(
+        OnboardingRequest req,
+        Id accountId,
+        Id contactRecordTypeId,
+        Boolean isUdcOnboarding
+    ) {
         Contact con = new Contact();
-        con.RecordTypeId    = contactRecordTypeId;
-        con.AccountId       = accToInsert.Id;
-        con.FirstName       = req.user.first_name;
-        con.LastName        = req.user.last_name;
-        con.Email           = req.user.email;
-        con.Phone           = req.user.phone;
+        con.RecordTypeId = contactRecordTypeId;
+        con.AccountId    = accountId;
+        con.FirstName    = req.user.first_name;
+        con.LastName     = req.user.last_name;
+        con.Email        = req.user.email;
+        con.Phone        = req.user.phone;
 
         // user_type mapping: 'Customer Account Owner' → 'Account Owner'
         if (req.user.user_type == 'Customer Account Owner') {
@@ -223,34 +365,50 @@ global with sharing class UdcOnboardingService {
             con.Company_User_Type__c = req.user.user_type;
         }
 
-        con.Contact_Role__c = req.user.role;
-
-        // UDC flag mirrors Account
+        con.Contact_Role__c   = req.user.role;
         con.UDC_Onboarding__c = isUdcOnboarding;
 
         // Mailing address
-        con.MailingStreet       = req.user.mailing_address_1;
-        con.MailingCity         = req.user.mailing_city;
-        con.MailingCountry      = req.user.mailing_country;
-        con.MailingState        = req.user.mailing_state;
-        con.MailingPostalCode   = req.user.mailing_zipcode;
+        con.MailingStreet     = req.user.mailing_address_1;
+        con.MailingCity       = req.user.mailing_city;
+        con.MailingCountry    = req.user.mailing_country;
+        con.MailingState      = req.user.mailing_state;
+        con.MailingPostalCode = req.user.mailing_zipcode;
 
-        // Step 8: FLS enforcement on Contact, then insert.
-        // UDC_Onboarding__c is a system-set flag — reapplied after FLS strip
-        // for the same reason as on Account above.
+        return con;
+    }
+
+    /**
+     * FLS-enforces and inserts a Contact record.
+     * On success, returns HTTP 201. On failure, rolls back to savepoint and returns HTTP 500.
+     * Handles both platform DmlExceptions and the @TestVisible ContactInsertException.
+     *
+     * @param con         The Contact to insert (pre-built by buildContact)
+     * @param sp          The savepoint to roll back to on failure
+     * @param res         The RestResponse to set statusCode on
+     * @param accountId   The Account Id — included in the success response
+     * @param successMsg  The message string to return on HTTP 201
+     * @return            A populated OnboardingResponse
+     */
+    private static OnboardingResponse insertContact(
+        Contact con,
+        Savepoint sp,
+        RestResponse res,
+        Id accountId,
+        String successMsg
+    ) {
+        // FLS enforcement on Contact.
+        // UDC_Onboarding__c reapplied after strip — same rationale as Account.
         SObjectAccessDecision conDecision = Security.stripInaccessible(
             AccessType.CREATABLE,
             new List<SObject>{ con }
         );
         Contact conToInsert = (Contact) conDecision.getRecords()[0];
-        conToInsert.UDC_Onboarding__c = isUdcOnboarding;
+        conToInsert.UDC_Onboarding__c = con.UDC_Onboarding__c;
 
         try {
             // @TestVisible bypass: forces a controlled failure to test rollback
-            // deterministically, without relying on org-specific duplicate/validation rules.
-            // We use StringException (a catchable exception) so getDmlMessage(0) is never
-            // called on a manually constructed DmlException (which would throw
-            // UnexpectedException — a non-catchable system exception in Apex).
+            // deterministically without relying on org-specific rules.
             if (Test.isRunningTest() && forceContactFailure) {
                 throw new ContactInsertException('Forced test failure for rollback verification');
             }
@@ -266,8 +424,7 @@ global with sharing class UdcOnboardingService {
                                 + e.getDmlMessage(0);
             return errResp;
         } catch (ContactInsertException e) {
-            // Test-only forced failure — rolls back Account to verify atomicity.
-            // This is the only place Database.rollback() is called (REQ-6 / Design AD #3).
+            // Test-only forced failure — rolls back to verify atomicity.
             Database.rollback(sp);
             res.statusCode = 500;
             OnboardingResponse errResp = new OnboardingResponse();
@@ -278,12 +435,11 @@ global with sharing class UdcOnboardingService {
             return errResp;
         }
 
-        // Step 9: Both records created — return 201 success response
         res.statusCode = 201;
         OnboardingResponse successResp = new OnboardingResponse();
         successResp.success   = true;
-        successResp.message   = 'Account and Contact created successfully.';
-        successResp.accountId = accToInsert.Id;
+        successResp.message   = successMsg;
+        successResp.accountId = accountId;
         successResp.contactId = conToInsert.Id;
         return successResp;
     }

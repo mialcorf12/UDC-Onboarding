@@ -47,26 +47,31 @@ private class UdcOnboardingServiceTest {
 
     /**
      * Returns a valid JSON payload string with all required fields.
-     * Callers can override individual values by using String.replace on the result,
-     * but most tests simply use named parameters directly in their payload string.
      *
      * @param orgName       Value for org_name
      * @param lastName      Value for user.last_name
      * @param email         Value for user.email
      * @param onboardType   Value for onboard_type (pass null to omit the field)
+     * @param orgSfdcId     Value for org_sfdc_id (pass null to omit — triggers Branch A: create new Account)
      */
     private static String buildPayload(
         String orgName,
         String lastName,
         String email,
-        String onboardType
+        String onboardType,
+        String orgSfdcId
     ) {
         String onboardTypeFragment = (onboardType != null)
             ? '"onboard_type": "' + onboardType + '",'
             : '';
 
+        String orgSfdcIdFragment = (orgSfdcId != null)
+            ? '"org_sfdc_id": "' + orgSfdcId + '",'
+            : '';
+
         return '{'
             + onboardTypeFragment
+            + orgSfdcIdFragment
             + '"is_parent": "false",'
             + '"org_name": ' + (orgName != null ? '"' + orgName + '"' : 'null') + ','
             + '"org_type": "Dental Practice",'
@@ -113,7 +118,7 @@ private class UdcOnboardingServiceTest {
      */
     @isTest
     static void testMissingOrgName() {
-        String payload = buildPayload(null, VALID_LAST_NAME, VALID_EMAIL, null);
+        String payload = buildPayload(null, VALID_LAST_NAME, VALID_EMAIL, null, null);
         setupRestContext(payload);
 
         Test.startTest();
@@ -145,7 +150,7 @@ private class UdcOnboardingServiceTest {
      */
     @isTest
     static void testMissingLastName() {
-        String payload = buildPayload(VALID_ORG_NAME, null, VALID_EMAIL, null);
+        String payload = buildPayload(VALID_ORG_NAME, null, VALID_EMAIL, null, null);
         setupRestContext(payload);
 
         Test.startTest();
@@ -173,7 +178,7 @@ private class UdcOnboardingServiceTest {
      */
     @isTest
     static void testInvalidEmail() {
-        String payload = buildPayload(VALID_ORG_NAME, VALID_LAST_NAME, 'not-an-email', null);
+        String payload = buildPayload(VALID_ORG_NAME, VALID_LAST_NAME, 'not-an-email', null, null);
         setupRestContext(payload);
 
         Test.startTest();
@@ -199,7 +204,7 @@ private class UdcOnboardingServiceTest {
      */
     @isTest
     static void testSuccessUdcFlagTrue() {
-        String payload = buildPayload(VALID_ORG_NAME, VALID_LAST_NAME, VALID_EMAIL, ONBOARD_TYPE_UDC);
+        String payload = buildPayload(VALID_ORG_NAME, VALID_LAST_NAME, VALID_EMAIL, ONBOARD_TYPE_UDC, null);
         setupRestContext(payload);
 
         Test.startTest();
@@ -253,8 +258,8 @@ private class UdcOnboardingServiceTest {
      */
     @isTest
     static void testSuccessUdcFlagFalse() {
-        // null onboardType → field is omitted from JSON
-        String payload = buildPayload(VALID_ORG_NAME, VALID_LAST_NAME, VALID_EMAIL, null);
+        // null onboardType, null orgSfdcId → Branch A (create new Account)
+        String payload = buildPayload(VALID_ORG_NAME, VALID_LAST_NAME, VALID_EMAIL, null, null);
         setupRestContext(payload);
 
         Test.startTest();
@@ -301,7 +306,7 @@ private class UdcOnboardingServiceTest {
      */
     @isTest
     static void testRollbackOnContactFailure() {
-        String payload = buildPayload(ROLLBACK_ORG_NAME, VALID_LAST_NAME, VALID_EMAIL, null);
+        String payload = buildPayload(ROLLBACK_ORG_NAME, VALID_LAST_NAME, VALID_EMAIL, null, null);
         setupRestContext(payload);
 
         // Activate the @TestVisible flag to force Contact DML failure
@@ -343,7 +348,7 @@ private class UdcOnboardingServiceTest {
     static void testAccountInsertFailure() {
         // 256 chars — exceeds Salesforce Account.Name limit of 255
         String longName = 'A'.repeat(256);
-        String payload = buildPayload(longName, VALID_LAST_NAME, VALID_EMAIL, null);
+        String payload = buildPayload(longName, VALID_LAST_NAME, VALID_EMAIL, null, null);
         setupRestContext(payload);
 
         Test.startTest();
@@ -361,5 +366,122 @@ private class UdcOnboardingServiceTest {
         List<Contact> contacts = [SELECT Id FROM Contact WHERE LastName = :VALID_LAST_NAME];
         System.assertEquals(true, contacts.isEmpty(),
             'No Contact should be created when Account DML fails');
+    }
+
+    // =========================================================================
+    // Scenario 8 — Branch B: org_sfdc_id provided but Account not found → HTTP 404
+    // =========================================================================
+
+    /**
+     * GIVEN a payload with org_sfdc_id that does not match any Account in the org
+     * WHEN POST is received
+     * THEN statusCode == 404, errorCode == ACCOUNT_NOT_FOUND, no DML executed
+     *
+     * Uses a well-formed but non-existent Salesforce Account Id.
+     * The SOQL query returns empty → endpoint returns 404 without touching the DB.
+     */
+    @isTest
+    static void testOrgSfdcIdNotFound() {
+        // Valid Salesforce Id format but guaranteed not to exist in test context
+        String fakeAccountId = '0016g00000000001AAA';
+        String payload = buildPayload(VALID_ORG_NAME, VALID_LAST_NAME, VALID_EMAIL, null, fakeAccountId);
+        setupRestContext(payload);
+
+        Test.startTest();
+        UdcOnboardingService.OnboardingResponse resp = UdcOnboardingService.handlePost();
+        Test.stopTest();
+
+        System.assertEquals(404, RestContext.response.statusCode,
+            'Expected HTTP 404 when org_sfdc_id does not match any Account');
+        System.assertEquals(false, resp.success,
+            'Expected success=false when Account not found');
+        System.assertEquals('ACCOUNT_NOT_FOUND', resp.errorCode,
+            'Expected errorCode ACCOUNT_NOT_FOUND');
+        System.assert(resp.message.contains(fakeAccountId),
+            'Expected error message to include the org_sfdc_id that was searched');
+
+        // Confirm no records were inserted
+        List<Account> accounts = [SELECT Id FROM Account WHERE Name = :VALID_ORG_NAME];
+        System.assertEquals(true, accounts.isEmpty(),
+            'No Account should be created when Branch B cannot find the existing Account');
+    }
+
+    // =========================================================================
+    // Scenario 9 — Branch B: org_sfdc_id found → Account updated + Contact created → HTTP 201
+    // =========================================================================
+
+    /**
+     * GIVEN a payload with a valid org_sfdc_id that matches an existing Account
+     * WHEN POST is received
+     * THEN statusCode == 201, the existing Account is updated (not a new one created),
+     *      and a new Contact is created linked to that Account
+     *
+     * Setup: inserts a test Account first, then passes its Id in the payload.
+     * Assertions verify that only ONE Account exists (the pre-existing one, updated)
+     * and that the Contact is linked to it.
+     */
+    @isTest
+    static void testOrgSfdcIdFoundUpdatesAccountAndCreatesContact() {
+        // Insert a pre-existing Account to simulate what Branch B would look up
+        Account existing = new Account(
+            Name         = 'Original Name',
+            Type         = 'Other',
+            Account_Status__c = 'Prospect',
+            RecordTypeId = Schema.SObjectType.Account
+                .getRecordTypeInfosByDeveloperName()
+                .get('Commercial')
+                .getRecordTypeId()
+        );
+        insert existing;
+
+        // Build payload pointing to the existing Account's real Id
+        String payload = buildPayload(VALID_ORG_NAME, VALID_LAST_NAME, VALID_EMAIL, ONBOARD_TYPE_UDC, existing.Id);
+        setupRestContext(payload);
+
+        Test.startTest();
+        UdcOnboardingService.OnboardingResponse resp = UdcOnboardingService.handlePost();
+        Test.stopTest();
+
+        System.assertEquals(201, RestContext.response.statusCode,
+            'Expected HTTP 201 when org_sfdc_id matches an existing Account');
+        System.assertEquals(true, resp.success,
+            'Expected success=true for Branch B happy path');
+        System.assertEquals(existing.Id, resp.accountId,
+            'Expected accountId to be the pre-existing Account, not a newly created one');
+        System.assertNotEquals(null, resp.contactId,
+            'Expected contactId to be populated on success');
+
+        // Verify the Account was UPDATED (not a new one inserted) — only 1 Account with this Id
+        List<Account> accounts = [
+            SELECT Id, Name, UDC_Onboarding__c
+            FROM Account
+            WHERE Id = :existing.Id
+        ];
+        System.assertEquals(1, accounts.size(),
+            'Expected exactly 1 Account with the pre-existing Id');
+        System.assertEquals(VALID_ORG_NAME, accounts[0].Name,
+            'Expected Account Name to be updated to payload org_name');
+        System.assertEquals(true, accounts[0].UDC_Onboarding__c,
+            'Expected UDC_Onboarding__c = true on updated Account');
+
+        // Verify no NEW Account was created (total Accounts in test = 1)
+        List<Account> allAccounts = [SELECT Id FROM Account];
+        System.assertEquals(1, allAccounts.size(),
+            'Branch B must not create a new Account — only the pre-existing one should exist');
+
+        // Verify Contact is linked to the pre-existing Account
+        List<Contact> contacts = [
+            SELECT Id, AccountId, UDC_Onboarding__c, LastName
+            FROM Contact
+            WHERE Id = :resp.contactId
+        ];
+        System.assertEquals(1, contacts.size(),
+            'Expected exactly 1 Contact to be created');
+        System.assertEquals(existing.Id, contacts[0].AccountId,
+            'Expected Contact to be linked to the pre-existing Account');
+        System.assertEquals(true, contacts[0].UDC_Onboarding__c,
+            'Expected UDC_Onboarding__c = true on Contact');
+        System.assertEquals(VALID_LAST_NAME, contacts[0].LastName,
+            'Expected Contact LastName to match payload user.last_name');
     }
 }
