@@ -489,4 +489,73 @@ private class UdcOnboardingServiceTest {
         System.assertEquals(VALID_LAST_NAME, contacts[0].LastName,
             'Expected Contact LastName to match payload user.last_name');
     }
+
+    // =========================================================================
+    // Scenario 10 — buildDmlErrorResponse: DUPLICATE_VALUE StatusCode → HTTP 409
+    // =========================================================================
+
+    /**
+     * GIVEN a DML failure whose StatusCode is overridden to DUPLICATE_VALUE
+     * WHEN POST is received
+     * THEN statusCode == 409, errorCode == DUPLICATE_RECORD
+     *
+     * Technique: trigger a real DmlException via a 256-char Account name, then
+     * inject the StatusCode via @TestVisible forceDmlStatusCodeOverride so the
+     * helper classifies it as a duplicate without relying on org Duplicate Rules.
+     */
+    @isTest
+    static void testDuplicateRecordReturns409() {
+        String longName = 'A'.repeat(256);
+        String payload = buildPayload(longName, VALID_LAST_NAME, VALID_EMAIL, null, null);
+        setupRestContext(payload);
+
+        UdcOnboardingService.forceDmlStatusCodeOverride = StatusCode.DUPLICATE_VALUE;
+
+        Test.startTest();
+        UdcOnboardingService.OnboardingResponse resp = UdcOnboardingService.handlePost();
+        Test.stopTest();
+
+        System.assertEquals(409, RestContext.response.statusCode,
+            'Expected HTTP 409 for duplicate record StatusCode');
+        System.assertEquals(false, resp.success,
+            'Expected success=false on duplicate error');
+        System.assertEquals('DUPLICATE_RECORD', resp.errorCode,
+            'Expected errorCode DUPLICATE_RECORD for DUPLICATE_VALUE StatusCode');
+        System.assert(resp.message.contains('Duplicate record detected'),
+            'Expected message to indicate duplicate detection');
+    }
+
+    // =========================================================================
+    // Scenario 11 — buildDmlErrorResponse: FIELD_CUSTOM_VALIDATION_EXCEPTION → HTTP 422
+    // =========================================================================
+
+    /**
+     * GIVEN a DML failure whose StatusCode is overridden to FIELD_CUSTOM_VALIDATION_EXCEPTION
+     * WHEN POST is received
+     * THEN statusCode == 422, errorCode == VALIDATION_RULE_VIOLATION
+     *
+     * Same injection technique as Scenario 10 — real DmlException via 256-char name,
+     * StatusCode overridden via @TestVisible flag.
+     */
+    @isTest
+    static void testValidationRuleViolationReturns422() {
+        String longName = 'A'.repeat(256);
+        String payload = buildPayload(longName, VALID_LAST_NAME, VALID_EMAIL, null, null);
+        setupRestContext(payload);
+
+        UdcOnboardingService.forceDmlStatusCodeOverride = StatusCode.FIELD_CUSTOM_VALIDATION_EXCEPTION;
+
+        Test.startTest();
+        UdcOnboardingService.OnboardingResponse resp = UdcOnboardingService.handlePost();
+        Test.stopTest();
+
+        System.assertEquals(422, RestContext.response.statusCode,
+            'Expected HTTP 422 for validation rule StatusCode');
+        System.assertEquals(false, resp.success,
+            'Expected success=false on validation rule rejection');
+        System.assertEquals('VALIDATION_RULE_VIOLATION', resp.errorCode,
+            'Expected errorCode VALIDATION_RULE_VIOLATION for FIELD_CUSTOM_VALIDATION_EXCEPTION StatusCode');
+        System.assert(resp.message.contains('validation rule rejected'),
+            'Expected message to reference validation rule rejection');
+    }
 }

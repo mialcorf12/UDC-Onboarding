@@ -28,6 +28,9 @@ global with sharing class UdcOnboardingService {
     @TestVisible
     private static Boolean forceContactFailure = false;
 
+    @TestVisible
+    private static StatusCode forceDmlStatusCodeOverride = null;
+
     // =========================================================================
     // Inner Classes — JSON Payload Wrappers
     // =========================================================================
@@ -480,7 +483,9 @@ global with sharing class UdcOnboardingService {
             Database.rollback(sp);
         }
 
-        StatusCode dmlType = e.getDmlType(0);
+        StatusCode dmlType = (Test.isRunningTest() && forceDmlStatusCodeOverride != null)
+            ? forceDmlStatusCodeOverride
+            : e.getDmlType(0);
         OnboardingResponse errResp = new OnboardingResponse();
         errResp.success = false;
 
