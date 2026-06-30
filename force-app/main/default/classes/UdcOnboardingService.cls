@@ -11,7 +11,9 @@
  *   201 — Account + Contact created (or Account updated + Contact created) successfully
  *   400 — Input validation failed (no DML executed)
  *   404 — org_sfdc_id provided but Account not found in Salesforce
- *   500 — DML error; transaction rolled back
+ *   409 — Duplicate record detected by a Salesforce Duplicate Rule
+ *   422 — Salesforce Validation Rule or required-field constraint rejected the record
+ *   500 — Unexpected DML error (trigger exception, lock timeout, etc.); transaction rolled back
  *
  * API Version: 66.0
  */
@@ -206,13 +208,7 @@ global with sharing class UdcOnboardingService {
             insert accToInsert;
         } catch (DmlException e) {
             // Account insert failed — no records written; no rollback needed.
-            res.statusCode = 500;
-            OnboardingResponse errResp = new OnboardingResponse();
-            errResp.success   = false;
-            errResp.errorCode = 'SALESFORCE_DML_ERROR';
-            errResp.message   = 'The transaction was rolled back. Original Salesforce error: '
-                                + e.getDmlMessage(0);
-            return errResp;
+            return buildDmlErrorResponse(e, res, null);
         }
 
         // Build and insert Contact linked to the new Account
@@ -275,15 +271,8 @@ global with sharing class UdcOnboardingService {
         try {
             update accToUpdate;
         } catch (DmlException e) {
-            // Account update failed — roll back to savepoint (no Contact inserted yet)
-            Database.rollback(sp);
-            res.statusCode = 500;
-            OnboardingResponse errResp = new OnboardingResponse();
-            errResp.success   = false;
-            errResp.errorCode = 'SALESFORCE_DML_ERROR';
-            errResp.message   = 'The transaction was rolled back. Original Salesforce error: '
-                                + e.getDmlMessage(0);
-            return errResp;
+            // Account update failed — buildDmlErrorResponse rolls back sp before returning.
+            return buildDmlErrorResponse(e, res, sp);
         }
 
         // Build and insert Contact linked to the existing Account
@@ -414,15 +403,8 @@ global with sharing class UdcOnboardingService {
             }
             insert conToInsert;
         } catch (DmlException e) {
-            // Platform DML failure — getDmlMessage(0) is safe on real DmlExceptions.
-            Database.rollback(sp);
-            res.statusCode = 500;
-            OnboardingResponse errResp = new OnboardingResponse();
-            errResp.success   = false;
-            errResp.errorCode = 'SALESFORCE_DML_ERROR';
-            errResp.message   = 'The transaction was rolled back. Original Salesforce error: '
-                                + e.getDmlMessage(0);
-            return errResp;
+            // Platform DML failure — buildDmlErrorResponse rolls back sp and classifies the error.
+            return buildDmlErrorResponse(e, res, sp);
         } catch (ContactInsertException e) {
             // Test-only forced failure — rolls back to verify atomicity.
             Database.rollback(sp);
@@ -474,5 +456,53 @@ global with sharing class UdcOnboardingService {
             return 'user.email is not a valid email address.';
         }
         return null;
+    }
+
+    /**
+     * Classifies a DmlException by StatusCode, rolls back if a savepoint is provided,
+     * and returns the appropriate OnboardingResponse with the correct HTTP status.
+     *
+     * StatusCode mapping:
+     *   DUPLICATE_VALUE / DUPLICATES_DETECTED         → 409 DUPLICATE_RECORD
+     *   FIELD_CUSTOM_VALIDATION_EXCEPTION / REQUIRED_FIELD_MISSING → 422 VALIDATION_RULE_VIOLATION
+     *   All other codes                               → 500 SALESFORCE_DML_ERROR
+     *
+     * @param e   The caught DmlException
+     * @param res The RestResponse to set statusCode on
+     * @param sp  Savepoint to roll back to; pass null when no DML preceded the failure
+     */
+    private static OnboardingResponse buildDmlErrorResponse(
+        DmlException e,
+        RestResponse res,
+        Savepoint sp
+    ) {
+        if (sp != null) {
+            Database.rollback(sp);
+        }
+
+        StatusCode dmlType = e.getDmlType(0);
+        OnboardingResponse errResp = new OnboardingResponse();
+        errResp.success = false;
+
+        if (dmlType == StatusCode.DUPLICATE_VALUE
+            || dmlType == StatusCode.DUPLICATES_DETECTED) {
+            res.statusCode    = 409;
+            errResp.errorCode = 'DUPLICATE_RECORD';
+            errResp.message   = 'Duplicate record detected. Original Salesforce error: '
+                                + e.getDmlMessage(0);
+        } else if (dmlType == StatusCode.FIELD_CUSTOM_VALIDATION_EXCEPTION
+                   || dmlType == StatusCode.REQUIRED_FIELD_MISSING) {
+            res.statusCode    = 422;
+            errResp.errorCode = 'VALIDATION_RULE_VIOLATION';
+            errResp.message   = 'Salesforce validation rule rejected the request. Original Salesforce error: '
+                                + e.getDmlMessage(0);
+        } else {
+            res.statusCode    = 500;
+            errResp.errorCode = 'SALESFORCE_DML_ERROR';
+            errResp.message   = 'The transaction was rolled back. Original Salesforce error: '
+                                + e.getDmlMessage(0);
+        }
+
+        return errResp;
     }
 }

@@ -9,6 +9,11 @@
  *
  * Test runner: sf apex run test -n UdcOnboardingServiceTest
  * API Version: 66.0
+ *
+ * Coverage note — HTTP 409 and 422:
+ * Unit tests cannot construct a platform DmlException with a controlled getDmlType(0) value.
+ * The 409 (DUPLICATE_RECORD) and 422 (VALIDATION_RULE_VIOLATION) paths are verified in
+ * integration testing against a sandbox org with active Duplicate Rules and Validation Rules.
  */
 @isTest(SeeAllData=false)
 private class UdcOnboardingServiceTest {
