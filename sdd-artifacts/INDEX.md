@@ -11,11 +11,11 @@
 
 | Metric | Value |
 |--------|-------|
-| All Tasks | 42/42 ✅ |
+| All Tasks | 52/52 ✅ |
 | Tests | 11/11 passing ✅ |
 | Code Coverage | 92% (≥85% required) ✅ |
-| Spec Requirements | 10/10 met ✅ |
-| Design Decisions | 13/13 implemented ✅ |
+| Spec Requirements | 11/11 met ✅ |
+| Design Decisions | 14/14 implemented ✅ |
 | Files Created | 4 (2 classes + 2 metadata) ✅ |
 | CRITICAL Issues | 0 ✅ |
 | Artifact Store | Engram + Files ✅ |
@@ -217,6 +217,10 @@
 | `buildDmlErrorResponse` | UdcOnboardingService.cls ~461 | Shared DML error classifier — rollback + 409/422/500 routing |
 | `forceDmlStatusCodeOverride` | UdcOnboardingService.cls ~31 | @TestVisible field for 409/422 unit test injection |
 | `handleExistingAccount` | UdcOnboardingService.cls | Branch B — SOQL lookup, 404 guard, Account update, Contact insert |
+| `org_id` field | UdcOnboardingService.cls — OnboardingRequest inner class | Optional payload field; maps to Account.uLab_Acct_Number__c |
+| `user_id` field | UdcOnboardingService.cls — ContactRequest inner class | Optional payload field; maps to Contact.Portal_User_ID__c (max 10 chars) |
+| `uLab_Acct_Number__c` reapplication | UdcOnboardingService.cls — handleNewAccount + handleExistingAccount | Decimal field reapplied after stripInaccessible — same pattern as UDC_Onboarding__c |
+| `Portal_User_ID__c` reapplication | UdcOnboardingService.cls — insertContact | String field reapplied after stripInaccessible |
 
 ### UdcOnboardingServiceTest.cls
 - testMissingOrgName() → 400
@@ -303,5 +307,6 @@ No pending work. All tasks complete as of 2026-06-30.
 ---
 
 **Generated**: 2026-06-22 | **Last Updated**: 2026-06-30  
+
 **SDD Cycle**: COMPLETE ✅  
 **Verdict**: PASS  

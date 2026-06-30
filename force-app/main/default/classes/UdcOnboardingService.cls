@@ -59,6 +59,7 @@ global with sharing class UdcOnboardingService {
         public String signature_required;
         public String out_of_service_area;
         public String org_sfdc_id;
+        public String org_id;
         public ContactRequest user;
     }
 
@@ -77,6 +78,7 @@ global with sharing class UdcOnboardingService {
         public String mailing_zipcode;
         public String user_type;
         public String role;
+        public String user_id;
     }
 
     /**
@@ -205,7 +207,8 @@ global with sharing class UdcOnboardingService {
             new List<SObject>{ acc }
         );
         Account accToInsert = (Account) accDecision.getRecords()[0];
-        accToInsert.UDC_Onboarding__c = isUdcOnboarding;
+        accToInsert.UDC_Onboarding__c   = isUdcOnboarding;
+        accToInsert.uLab_Acct_Number__c = acc.uLab_Acct_Number__c;
 
         try {
             insert accToInsert;
@@ -269,7 +272,8 @@ global with sharing class UdcOnboardingService {
             new List<SObject>{ acc }
         );
         Account accToUpdate = (Account) accDecision.getRecords()[0];
-        accToUpdate.UDC_Onboarding__c = isUdcOnboarding;
+        accToUpdate.UDC_Onboarding__c   = isUdcOnboarding;
+        accToUpdate.uLab_Acct_Number__c = acc.uLab_Acct_Number__c;
 
         try {
             update accToUpdate;
@@ -324,6 +328,7 @@ global with sharing class UdcOnboardingService {
         acc.BillingCountry    = req.billing_country;
         acc.BillingState      = req.billing_region;
         acc.BillingPostalCode = req.billing_zip;
+        acc.uLab_Acct_Number__c = String.isBlank(req.org_id) ? null : Decimal.valueOf(req.org_id);
     }
 
     /**
@@ -358,6 +363,7 @@ global with sharing class UdcOnboardingService {
         }
 
         con.Contact_Role__c   = req.user.role;
+        con.Portal_User_ID__c = req.user.user_id;
         con.UDC_Onboarding__c = isUdcOnboarding;
 
         // Mailing address
@@ -396,7 +402,8 @@ global with sharing class UdcOnboardingService {
             new List<SObject>{ con }
         );
         Contact conToInsert = (Contact) conDecision.getRecords()[0];
-        conToInsert.UDC_Onboarding__c = con.UDC_Onboarding__c;
+        conToInsert.UDC_Onboarding__c  = con.UDC_Onboarding__c;
+        conToInsert.Portal_User_ID__c  = con.Portal_User_ID__c;
 
         try {
             // @TestVisible bypass: forces a controlled failure to test rollback

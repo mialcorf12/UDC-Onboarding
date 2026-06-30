@@ -20,6 +20,7 @@ A single `@RestResource(urlMapping='/UdcOnboardingService/*')` global class with
 | AD-11 | Extract `buildDmlErrorResponse` as shared helper | Three catch blocks had identical rollback + error construction logic. Single method eliminates duplication and ensures consistent classification across all DML failure points. |
 | AD-12 | Classify DML errors by `e.getDmlType(0)` StatusCode | Parsing error messages is brittle. `StatusCode` enum is the authoritative platform signal. Maps to 409/422/500 without string matching. |
 | AD-13 | `@TestVisible forceDmlStatusCodeOverride` for 409/422 coverage | Platform `DmlException` with a controlled `getDmlType(0)` cannot be constructed in unit tests. This field mirrors the existing `forceContactFailure` pattern and keeps production code clean (`Test.isRunningTest()` guard). |
+| AD-14 | Reapply `uLab_Acct_Number__c` and `Portal_User_ID__c` after `stripInaccessible` | FLS strip may remove Decimal/String fields if the running user's profile restricts them. These values are always endpoint-controlled so they are explicitly reassigned after the strip decision — same pattern established by `UDC_Onboarding__c`. |
 
 ## Data Flow
 ```
@@ -36,6 +37,11 @@ Portal HTTP POST  { "onboard_type": "udesign.cloud", ... }
 ```
 
 ### Branch B Data Flow (org_sfdc_id provided)
+
+**New field mappings (2026-06-30):**
+- `req.org_id` (String) → `Decimal.valueOf(req.org_id)` → `Account.uLab_Acct_Number__c`
+- `req.user.user_id` (String, max 10) → `Contact.Portal_User_ID__c`
+Both fields are reapplied after `Security.stripInaccessible` in their respective DML blocks.
 
 1. Deserialize JSON → validate inputs (same gate as Branch A) → 400 on failure
 2. SOQL: `SELECT Id FROM Account WHERE Id = :req.org_sfdc_id LIMIT 1`

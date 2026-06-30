@@ -88,4 +88,21 @@ Chain strategy: pending
 | 41 | Update HTTP contract comment in class Javadoc (add 409, 422) | [x] |
 | 42 | Update jira/ and sdd-artifacts/ docs | [x] |
 
-**COMPLETE — 42/42 tasks, 11/11 tests GREEN, 2026-06-30**
+---
+
+## Phase 7 — org_id and user_id Fields (2026-06-30)
+
+| # | Task | Status |
+|---|------|--------|
+| 43 | Add `org_id` to `OnboardingRequest` inner class | [x] |
+| 44 | Add `user_id` to `ContactRequest` inner class | [x] |
+| 45 | Map `org_id` → `Account.uLab_Acct_Number__c` in `applyAccountFields` (Decimal.valueOf with null guard) | [x] |
+| 46 | Map `user_id` → `Contact.Portal_User_ID__c` in `buildContact` | [x] |
+| 47 | Reapply `uLab_Acct_Number__c` after `stripInaccessible` in `handleNewAccount` (Branch A) | [x] |
+| 48 | Reapply `uLab_Acct_Number__c` after `stripInaccessible` in `handleExistingAccount` (Branch B) | [x] |
+| 49 | Reapply `Portal_User_ID__c` after `stripInaccessible` in `insertContact` | [x] |
+| 50 | Update `buildPayload` helper with `org_id: "12345"` and `user_id: "USR001"` | [x] |
+| 51 | Add `uLab_Acct_Number__c` + `Portal_User_ID__c` to SOQL and assertions in 3 success tests | [x] |
+| 52 | Deploy and verify: 11/11 tests GREEN | [x] |
+
+**COMPLETE — 52/52 tasks, 11/11 tests GREEN, 2026-06-30**

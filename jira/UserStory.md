@@ -42,6 +42,7 @@ The uDesign Cloud onboarding portal needs to create a complete customer record (
   "billing_zip": "J5V3B2",
   "signature_required": "false",
   "out_of_service_area": "false",
+  "org_id": "...",
   "user": {
     "first_name": "Test01",
     "last_name": "Test",
@@ -53,7 +54,8 @@ The uDesign Cloud onboarding portal needs to create a complete customer record (
     "mailing_state": "QLD",
     "mailing_zipcode": "J6Y3V2",
     "user_type": "Customer Account Owner",
-    "role": "Orthodontist"
+    "role": "Orthodontist",
+    "user_id": "..."
   }
 }
 ```
@@ -86,6 +88,7 @@ The uDesign Cloud onboarding portal needs to create a complete customer record (
 | `onboard_type` = `"udesign.cloud"` | `UDC_Onboarding__c` | Checkbox | Set to `true` when value equals `"udesign.cloud"`; otherwise `false` |
 | *(hardcoded)* | `RecordTypeId` | Lookup | Resolved to `Commercial` via `SObjectType.Account.getRecordTypeInfosByDeveloperName()` |
 | `shipping_name` | — | — | **Discarded** — redundant with `org_name` |
+| `org_id` | `Account.uLab_Acct_Number__c` | Decimal | Optional — converted server-side from String |
 | `billing_name` | — | — | **Discarded** — redundant with `org_name` |
 | `clinical_dev_spec` | — | — | **Out of scope** — requires User ID resolution; future story |
 | `clinical_ed_spec` | — | — | **Out of scope** — requires User ID resolution; future story |
@@ -108,6 +111,7 @@ The uDesign Cloud onboarding portal needs to create a complete customer record (
 | `role` | `Contact_Role__c` | Picklist | Direct mapping; `"Orthodontist"` is active in Record Type `Commercial` |
 | `onboard_type` = `"udesign.cloud"` *(from root)* | `UDC_Onboarding__c` | Checkbox | Set to `true` when root `onboard_type` equals `"udesign.cloud"`; otherwise `false` |
 | *(hardcoded)* | `RecordTypeId` | Lookup | Resolved to `Commercial` via `SObjectType.Contact.getRecordTypeInfosByDeveloperName()` |
+| `user_id` | `Contact.Portal_User_ID__c` | String (max 10) | Optional — portal MUST enforce max 10 chars |
 | `mailing_name` | — | — | **Discarded** — redundant with `first_name` + `last_name` |
 | `mailing_phone` | — | — | **Discarded** — redundant with `user.phone` |
 

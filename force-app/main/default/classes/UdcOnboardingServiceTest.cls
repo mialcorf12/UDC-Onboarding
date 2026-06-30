@@ -77,6 +77,7 @@ private class UdcOnboardingServiceTest {
         return '{'
             + onboardTypeFragment
             + orgSfdcIdFragment
+            + '"org_id": "12345",'
             + '"is_parent": "false",'
             + '"org_name": ' + (orgName != null ? '"' + orgName + '"' : 'null') + ','
             + '"org_type": "Dental Practice",'
@@ -105,7 +106,8 @@ private class UdcOnboardingServiceTest {
             +   '"mailing_state": "TX",'
             +   '"mailing_zipcode": "75001",'
             +   '"user_type": "Customer Account Owner",'
-            +   '"role": "Orthodontist"'
+            +   '"role": "Orthodontist",'
+            +   '"user_id": "USR001"'
             + '}'
             + '}';
     }
@@ -227,7 +229,7 @@ private class UdcOnboardingServiceTest {
 
         // Verify Account persisted with UDC flag
         List<Account> accounts = [
-            SELECT Id, Name, UDC_Onboarding__c
+            SELECT Id, Name, UDC_Onboarding__c, uLab_Acct_Number__c
             FROM Account
             WHERE Id = :resp.accountId
         ];
@@ -235,10 +237,12 @@ private class UdcOnboardingServiceTest {
             'Expected exactly 1 Account to be inserted');
         System.assertEquals(true, accounts[0].UDC_Onboarding__c,
             'Expected UDC_Onboarding__c = true on Account when onboard_type = udesign.cloud');
+        System.assertEquals(12345, accounts[0].uLab_Acct_Number__c,
+            'Expected uLab_Acct_Number__c to be populated from org_id');
 
         // Verify Contact persisted with UDC flag and linked to Account
         List<Contact> contacts = [
-            SELECT Id, AccountId, UDC_Onboarding__c
+            SELECT Id, AccountId, UDC_Onboarding__c, Portal_User_ID__c
             FROM Contact
             WHERE Id = :resp.contactId
         ];
@@ -248,6 +252,8 @@ private class UdcOnboardingServiceTest {
             'Expected UDC_Onboarding__c = true on Contact when onboard_type = udesign.cloud');
         System.assertEquals(resp.accountId, contacts[0].AccountId,
             'Expected Contact to be linked to the created Account');
+        System.assertEquals('USR001', contacts[0].Portal_User_ID__c,
+            'Expected Portal_User_ID__c to be populated from user_id');
     }
 
     // =========================================================================
@@ -278,7 +284,7 @@ private class UdcOnboardingServiceTest {
 
         // Verify UDC flag is false on Account
         List<Account> accounts = [
-            SELECT Id, UDC_Onboarding__c
+            SELECT Id, UDC_Onboarding__c, uLab_Acct_Number__c
             FROM Account
             WHERE Id = :resp.accountId
         ];
@@ -286,10 +292,12 @@ private class UdcOnboardingServiceTest {
             'Expected exactly 1 Account to be inserted');
         System.assertEquals(false, accounts[0].UDC_Onboarding__c,
             'Expected UDC_Onboarding__c = false on Account when onboard_type is absent');
+        System.assertEquals(12345, accounts[0].uLab_Acct_Number__c,
+            'Expected uLab_Acct_Number__c to be populated from org_id');
 
         // Verify UDC flag is false on Contact
         List<Contact> contacts = [
-            SELECT Id, UDC_Onboarding__c
+            SELECT Id, UDC_Onboarding__c, Portal_User_ID__c
             FROM Contact
             WHERE Id = :resp.contactId
         ];
@@ -297,6 +305,8 @@ private class UdcOnboardingServiceTest {
             'Expected exactly 1 Contact to be inserted');
         System.assertEquals(false, contacts[0].UDC_Onboarding__c,
             'Expected UDC_Onboarding__c = false on Contact when onboard_type is absent');
+        System.assertEquals('USR001', contacts[0].Portal_User_ID__c,
+            'Expected Portal_User_ID__c to be populated from user_id');
     }
 
     // =========================================================================
@@ -458,7 +468,7 @@ private class UdcOnboardingServiceTest {
 
         // Verify the Account was UPDATED (not a new one inserted) — only 1 Account with this Id
         List<Account> accounts = [
-            SELECT Id, Name, UDC_Onboarding__c
+            SELECT Id, Name, UDC_Onboarding__c, uLab_Acct_Number__c
             FROM Account
             WHERE Id = :existing.Id
         ];
@@ -468,6 +478,8 @@ private class UdcOnboardingServiceTest {
             'Expected Account Name to be updated to payload org_name');
         System.assertEquals(true, accounts[0].UDC_Onboarding__c,
             'Expected UDC_Onboarding__c = true on updated Account');
+        System.assertEquals(12345, accounts[0].uLab_Acct_Number__c,
+            'Expected uLab_Acct_Number__c to be populated from org_id on Account update');
 
         // Verify no NEW Account was created (total Accounts in test = 1)
         List<Account> allAccounts = [SELECT Id FROM Account];
@@ -476,7 +488,7 @@ private class UdcOnboardingServiceTest {
 
         // Verify Contact is linked to the pre-existing Account
         List<Contact> contacts = [
-            SELECT Id, AccountId, UDC_Onboarding__c, LastName
+            SELECT Id, AccountId, UDC_Onboarding__c, LastName, Portal_User_ID__c
             FROM Contact
             WHERE Id = :resp.contactId
         ];
@@ -488,6 +500,8 @@ private class UdcOnboardingServiceTest {
             'Expected UDC_Onboarding__c = true on Contact');
         System.assertEquals(VALID_LAST_NAME, contacts[0].LastName,
             'Expected Contact LastName to match payload user.last_name');
+        System.assertEquals('USR001', contacts[0].Portal_User_ID__c,
+            'Expected Portal_User_ID__c to be populated from user_id');
     }
 
     // =========================================================================

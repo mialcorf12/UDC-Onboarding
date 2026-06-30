@@ -20,9 +20,10 @@
 | Phase 4: VERIFY | 3 | 3 | ✅ |
 | Phase 5: Cleanup | 3 | 3 | ✅ |
 | Phase 6: Branch B + Error Codes | 15 | 15 | ✅ |
-| **TOTAL** | **42** | **42** | ✅ |
+| Phase 7: org_id + user_id Fields | 10 | 10 | ✅ |
+| **TOTAL** | **52** | **52** | ✅ |
 
-All 42 tasks marked [x] in the tasks artifact. No unchecked implementation tasks.
+All 52 tasks marked [x] in the tasks artifact. No unchecked implementation tasks.
 
 ---
 
@@ -58,6 +59,7 @@ Uncovered lines analysis:
 | REQ-8 | with sharing; stripInaccessible; ≥85% coverage; no DML/SOQL in loops | All 7 tests; 92% coverage confirmed | Line 18: global with sharing; Lines 186–190, 241–245: Security.stripInaccessible(CREATABLE); no loops present | ✅ PASS |
 | REQ-9 | org_sfdc_id branch decision | testOrgSfdcIdNotFound, testOrgSfdcIdFoundUpdatesAccountAndCreatesContact | handleExistingAccount | ✅ PASS |
 | REQ-10 | Refined DML error codes 409/422/500 | testDuplicateRecordReturns409, testValidationRuleViolationReturns422, testAccountInsertFailure | buildDmlErrorResponse | ✅ PASS |
+| REQ-11 | org_id + user_id optional field mapping | testSuccessUdcFlagTrue, testSuccessUdcFlagFalse, testOrgSfdcIdFoundUpdatesAccountAndCreatesContact | applyAccountFields, buildContact, reapplication in handleNewAccount/handleExistingAccount/insertContact | ✅ PASS |
 
 ---
 
@@ -78,8 +80,9 @@ Uncovered lines analysis:
 | AD-11 | buildDmlErrorResponse method present, replaces all inline catch blocks | PRESENT |
 | AD-12 | e.getDmlType(0) used for StatusCode classification inside buildDmlErrorResponse | PRESENT |
 | AD-13 | forceDmlStatusCodeOverride @TestVisible field with Test.isRunningTest() guard | PRESENT |
+| AD-14 | uLab_Acct_Number__c and Portal_User_ID__c reapplied after stripInaccessible in all DML blocks | PRESENT |
 
-All 13 design decisions verified present in implementation.
+All 14 design decisions verified present in implementation.
 
 ---
 
@@ -126,9 +129,9 @@ None.
 
 **PASS**
 
-- All 42 tasks complete ✅
-- All 10 spec requirements covered by passing tests ✅
-- All 13 design decisions present in code ✅
+- All 52 tasks complete ✅
+- All 11 spec requirements covered by passing tests ✅
+- All 14 design decisions present in code ✅
 - 11/11 tests GREEN at runtime ✅
 - Coverage 92% ≥ 85% threshold ✅
 - TDD cycle (RED → GREEN → REFACTOR) documented and evidenced ✅
