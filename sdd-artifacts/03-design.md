@@ -17,6 +17,9 @@ A single `@RestResource(urlMapping='/UdcOnboardingService/*')` global class with
 | 8 | HTTP status | Set `RestContext.response.statusCode` (201/400/500) before return | @RestResource does not derive status from return value |
 | 9 | FLS/CRUD enforcement | `Security.stripInaccessible(AccessType.CREATABLE, records)` before each insert | `with sharing` covers record-level sharing only; stripInaccessible enforces FLS on writable fields (REQ-8). No SOQL reads in happy path so WITH SECURITY_ENFORCED is N/A. |
 | 10 | Payload field name | `onboard_type` (underscore) in JSON and inner class | Apex field names cannot contain hyphens; portal team confirmed rename from `onboard-type` to `onboard_type`. No workaround needed — direct JSON.deserialize mapping works. |
+| AD-11 | Extract `buildDmlErrorResponse` as shared helper | Three catch blocks had identical rollback + error construction logic. Single method eliminates duplication and ensures consistent classification across all DML failure points. |
+| AD-12 | Classify DML errors by `e.getDmlType(0)` StatusCode | Parsing error messages is brittle. `StatusCode` enum is the authoritative platform signal. Maps to 409/422/500 without string matching. |
+| AD-13 | `@TestVisible forceDmlStatusCodeOverride` for 409/422 coverage | Platform `DmlException` with a controlled `getDmlType(0)` cannot be constructed in unit tests. This field mirrors the existing `forceContactFailure` pattern and keeps production code clean (`Test.isRunningTest()` guard). |
 
 ## Data Flow
 ```
@@ -30,6 +33,25 @@ Portal HTTP POST  { "onboard_type": "udesign.cloud", ... }
   → stripInaccessible(CREATABLE, [con]) → insert Contact (AccountId=acc.Id)
       └──DmlException──→ catch → rollback(sp) → statusCode=500 SALESFORCE_DML_ERROR
   → statusCode=201 { success:true, accountId, contactId }
+```
+
+### Branch B Data Flow (org_sfdc_id provided)
+
+1. Deserialize JSON → validate inputs (same gate as Branch A) → 400 on failure
+2. SOQL: `SELECT Id FROM Account WHERE Id = :req.org_sfdc_id LIMIT 1`
+3. If empty → return 404 `ACCOUNT_NOT_FOUND` (no DML)
+4. `applyAccountFields` onto retrieved Account → `Security.stripInaccessible(UPDATABLE)` → `update`
+5. `buildContact` → `insertContact` (same helper as Branch A)
+6. Return 201 with existing `accountId` + new `contactId`
+
+DML Error Classification (both branches, all DML points):
+
+```
+DmlException.getDmlType(0)
+  DUPLICATE_VALUE / DUPLICATES_DETECTED  → 409 DUPLICATE_RECORD
+  FIELD_CUSTOM_VALIDATION_EXCEPTION /
+  REQUIRED_FIELD_MISSING                 → 422 VALIDATION_RULE_VIOLATION
+  anything else                          → 500 SALESFORCE_DML_ERROR
 ```
 
 ## File Changes

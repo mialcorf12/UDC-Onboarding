@@ -11,11 +11,11 @@
 
 | Metric | Value |
 |--------|-------|
-| All Tasks | 27/27 ✅ |
-| Tests | 7/7 passing ✅ |
+| All Tasks | 42/42 ✅ |
+| Tests | 11/11 passing ✅ |
 | Code Coverage | 92% (≥85% required) ✅ |
-| Spec Requirements | 8/8 met ✅ |
-| Design Decisions | 10/10 implemented ✅ |
+| Spec Requirements | 10/10 met ✅ |
+| Design Decisions | 13/13 implemented ✅ |
 | Files Created | 4 (2 classes + 2 metadata) ✅ |
 | CRITICAL Issues | 0 ✅ |
 | Artifact Store | Engram + Files ✅ |
@@ -177,6 +177,9 @@
 | 8 | RestContext.response.statusCode | ✅ |
 | 9 | Security.stripInaccessible() | ✅ |
 | 10 | onboard_type underscore field | ✅ |
+| AD-11 | Extract `buildDmlErrorResponse` helper | Single source of truth for rollback + HTTP classification |
+| AD-12 | Classify DML errors by `e.getDmlType(0)` | Actionable 409/422 vs. unrecoverable 500 without log parsing |
+| AD-13 | `@TestVisible forceDmlStatusCodeOverride` | Inject StatusCode in unit tests; mirrors existing `forceContactFailure` pattern |
 
 ---
 
@@ -209,6 +212,12 @@
 - Line 241–245: stripInaccessible (Contact)
 - Line 260, 271: Database.rollback(sp)
 
+| Symbol | Location | Purpose |
+|--------|----------|---------|
+| `buildDmlErrorResponse` | UdcOnboardingService.cls ~461 | Shared DML error classifier — rollback + 409/422/500 routing |
+| `forceDmlStatusCodeOverride` | UdcOnboardingService.cls ~31 | @TestVisible field for 409/422 unit test injection |
+| `handleExistingAccount` | UdcOnboardingService.cls | Branch B — SOQL lookup, 404 guard, Account update, Contact insert |
+
 ### UdcOnboardingServiceTest.cls
 - testMissingOrgName() → 400
 - testMissingLastName() → 400
@@ -217,6 +226,10 @@
 - testSuccessUdcFlagFalse() → 201, flags=false
 - testRollbackOnContactFailure() → 500, SOQL isEmpty assert
 - testAccountInsertFailure() → 500
+- testOrgSfdcIdNotFound() → 404, ACCOUNT_NOT_FOUND
+- testOrgSfdcIdFoundUpdatesAccountAndCreatesContact() → 201, Account updated (not inserted), Contact linked
+- testDuplicateRecordReturns409() → 409, DUPLICATE_RECORD
+- testValidationRuleViolationReturns422() → 422, VALIDATION_RULE_VIOLATION
 
 ---
 
@@ -275,11 +288,7 @@ None ✅
 
 ## Next Steps
 
-1. **Create GitHub PR** with the 4 Apex files (2 classes + 2 metadata)
-2. **Team Review**: Share sdd-artifacts/ folder for context
-3. **Deploy to Sandbox**: Test end-to-end with actual portal payload
-4. **Optional**: Add remaining tests for 100% coverage (line 223, onboard_type='other')
-5. **Merge & Release**: Once sandbox validation confirms
+No pending work. All tasks complete as of 2026-06-30.
 
 ---
 
@@ -293,6 +302,6 @@ None ✅
 
 ---
 
-**Generated**: 2026-06-22  
+**Generated**: 2026-06-22 | **Last Updated**: 2026-06-30  
 **SDD Cycle**: COMPLETE ✅  
 **Verdict**: PASS  

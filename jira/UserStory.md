@@ -191,6 +191,70 @@ And    the Contact is never processed
 And    no orphan records exist in Salesforce
 ```
 
+**Scenario 8 — org_sfdc_id: Account not found**
+```gherkin
+Given  the POST payload includes a non-blank org_sfdc_id
+And    no Account with that Salesforce Id exists in the org
+When   the service processes the request
+Then   it returns HTTP 404 with errorCode: "ACCOUNT_NOT_FOUND"
+And    no DML is executed
+```
+
+**Scenario 9 — org_sfdc_id: Account found, update + Contact created**
+```gherkin
+Given  the POST payload includes a non-blank org_sfdc_id
+And    an Account with that Salesforce Id exists in the org
+When   the service processes the request
+Then   it updates the existing Account with the payload values
+And    creates a new Contact linked to that Account
+And    returns HTTP 201 with the existing accountId and the new contactId
+```
+
+**Scenario 10 — Duplicate DML error returns 409**
+```gherkin
+Given  a DML operation is rejected by a Salesforce Duplicate Rule
+When   the service catches the DMLException
+Then   it returns HTTP 409 with errorCode: "DUPLICATE_RECORD"
+And    the transaction is rolled back
+```
+
+**Scenario 11 — Validation Rule violation returns 422**
+```gherkin
+Given  a DML operation is rejected by a Validation Rule or required-field constraint
+When   the service catches the DMLException
+Then   it returns HTTP 422 with errorCode: "VALIDATION_RULE_VIOLATION"
+And    the transaction is rolled back
+```
+
+### AC-8: Optional org_sfdc_id — Branch Decision
+
+**Given** the POST payload includes a non-blank `org_sfdc_id` field  
+**When** the service processes the request  
+**Then** it performs a SOQL lookup for an Account with that Salesforce Id
+
+**Given** the `org_sfdc_id` does not match any existing Account  
+**When** the service performs the SOQL lookup  
+**Then** it returns HTTP 404 with `errorCode: "ACCOUNT_NOT_FOUND"` and no DML is executed
+
+**Given** the `org_sfdc_id` matches an existing Account  
+**When** the service processes the request  
+**Then** it updates the existing Account and creates a new Contact linked to it, returning HTTP 201
+
+**Given** the POST payload has a blank or null `org_sfdc_id`  
+**When** the service processes the request  
+**Then** it follows the original Branch A flow (create new Account + Contact)
+
+### AC-9: Refined DML Error HTTP Codes
+
+| HTTP | errorCode | Trigger |
+|------|-----------|---------|
+| 409 | `DUPLICATE_RECORD` | Salesforce Duplicate Rule fired (`DUPLICATE_VALUE` or `DUPLICATES_DETECTED`) |
+| 422 | `VALIDATION_RULE_VIOLATION` | Validation Rule or required-field constraint rejected the record |
+| 500 | `SALESFORCE_DML_ERROR` | Unexpected platform error (trigger exception, lock timeout, etc.) |
+
+All DML error responses include the original Salesforce error message in the `message` field.
+Transaction is rolled back on all three paths.
+
 ---
 
 ## API Responses
@@ -252,7 +316,7 @@ And    no orphan records exist in Salesforce
 
 ## Story Points
 
-**8** — Apex REST class with two-layer validation (input + DML), Record Type resolution on both objects, `UDC_Onboarding__c` conditional flag logic, three String-to-Boolean conversions, savepoint/rollback transaction control, and a test class covering seven Gherkin scenarios including SOQL-verified rollback.
+**13** — Apex REST class with two-layer validation (input + DML), Record Type resolution on both objects, `UDC_Onboarding__c` conditional flag logic, three String-to-Boolean conversions, savepoint/rollback transaction control, Branch B (org_sfdc_id lookup, 404 guard, Account update), DML error HTTP classification (409/422/500 via `buildDmlErrorResponse`), and a test class covering 11 Gherkin scenarios including SOQL-verified rollback.
 
 ---
 
@@ -268,7 +332,7 @@ And    no orphan records exist in Salesforce
 - [ ] Map payload `user` → Contact fields including `UDC_Onboarding__c`, `Company_User_Type__c`, `Contact_Role__c`, `RecordTypeId`
 - [ ] Implement try-catch block with `Savepoint` + `Database.rollback()` around all DML
 - [ ] Implement inner class `OnboardingResponse` — serializes HTTP 201/400/500 responses
-- [ ] Create `UdcOnboardingServiceTest` covering all 7 Gherkin scenarios
+- [ ] Create `UdcOnboardingServiceTest` covering all 11 Gherkin scenarios
 - [ ] Rollback test: verify with `[SELECT Id FROM Account WHERE Name = :testOrgName]` that no Account persists after Contact failure
 
 ---
