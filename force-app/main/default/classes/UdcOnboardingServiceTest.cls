@@ -843,6 +843,8 @@ private class UdcOnboardingServiceTest {
             'Failed event Org_Id__c must carry the org_id from the payload');
         System.assertEquals(null, evt.Org_Sfdc_Id__c,
             'Failed event Org_Sfdc_Id__c must be null — no Account committed');
+        System.assertEquals('USR001', evt.User_Id__c,
+            'Failed event User_Id__c must carry user_id from the payload');
         System.assertEquals(null, evt.User_Sfdc_Id__c,
             'Failed event User_Sfdc_Id__c must be null — no Contact committed');
 
@@ -935,6 +937,13 @@ private class UdcOnboardingServiceTest {
         Sfdc_Accountuser_CreatedFailed__e evt = failedEvents[0];
         System.assertEquals('12345', evt.Org_Id__c,
             'Failed event Org_Id__c must carry the org_id from the payload');
+        // Account was inserted successfully before Contact DML failed → Org_Sfdc_Id__c must be populated
+        System.assertNotEquals(null, evt.Org_Sfdc_Id__c,
+            'Failed event Org_Sfdc_Id__c must carry the Account Id — Account was committed before Contact failed');
+        System.assertEquals('USR001', evt.User_Id__c,
+            'Failed event User_Id__c must carry the user_id from the payload');
+        System.assertEquals(null, evt.User_Sfdc_Id__c,
+            'Failed event User_Sfdc_Id__c must be null — Contact was never committed');
 
         // Then — 0 success events
         List<Sfdc_Accountuser_CreatedSuccess__e> successEvents = getPublishedSuccessEvents();
@@ -989,6 +998,14 @@ private class UdcOnboardingServiceTest {
         List<Sfdc_Accountuser_CreatedFailed__e> failedEvents = getPublishedFailedEvents();
         System.assertEquals(1, failedEvents.size(),
             'Expected exactly 1 Sfdc_Accountuser_CreatedFailed__e published despite DML rollback');
+
+        // Account was inserted before the forced Contact failure — Org_Sfdc_Id__c must be populated
+        // even though the Account was rolled back afterwards (event captured before rollback)
+        Sfdc_Accountuser_CreatedFailed__e evt = failedEvents[0];
+        System.assertNotEquals(null, evt.Org_Sfdc_Id__c,
+            'Failed event Org_Sfdc_Id__c must carry the Account Id — it existed at publish time before rollback');
+        System.assertEquals(null, evt.User_Sfdc_Id__c,
+            'Failed event User_Sfdc_Id__c must be null — Contact was never committed');
 
         // Then — 0 success events
         List<Sfdc_Accountuser_CreatedSuccess__e> successEvents = getPublishedSuccessEvents();
@@ -1090,6 +1107,8 @@ private class UdcOnboardingServiceTest {
             'Failed event Org_Sfdc_Id__c must be null — no Account was committed');
         System.assertEquals(null, evt.User_Sfdc_Id__c,
             'Failed event User_Sfdc_Id__c must be null — no Contact was committed');
+        System.assertEquals('USR001', evt.User_Id__c,
+            'Failed event User_Id__c must carry user_id from the payload');
 
         // Then — 0 success events
         List<Sfdc_Accountuser_CreatedSuccess__e> successEvents = getPublishedSuccessEvents();
