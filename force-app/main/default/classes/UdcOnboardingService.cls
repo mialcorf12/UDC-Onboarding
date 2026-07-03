@@ -122,7 +122,8 @@ global with sharing class UdcOnboardingService {
      *   3. Set savepoint
      *   4. Insert Account (FLS-checked) → 500 on failure
      *   5. Insert Contact linked to Account (FLS-checked) → rollback + 500 on failure
-     *   6. Return 201
+     *   6. Publish Sfdc_Accountuser_CreatedSuccess__e
+     *   7. Return 201
      *
      * Flow — Branch B (org_sfdc_id has value): update existing Account + create Contact
      *   1. Deserialize JSON body
@@ -131,7 +132,8 @@ global with sharing class UdcOnboardingService {
      *   4. Set savepoint
      *   5. Update existing Account (FLS-checked) → rollback + 500 on failure
      *   6. Insert Contact linked to existing Account (FLS-checked) → rollback + 500 on failure
-     *   7. Return 201
+     *   7. Publish Sfdc_Accountuser_CreatedSuccess__e
+     *   8. Return 201
      */
     @HttpPost
     global static OnboardingResponse handlePost() {
@@ -151,6 +153,8 @@ global with sharing class UdcOnboardingService {
             errResp.success   = false;
             errResp.errorCode = 'INVALID_INPUT';
             errResp.message   = 'Validation failed: ' + validationError;
+            // REQ-PE-2: publish FAILED event on 400 — req is deserialized, org_id may be null
+            publishFailedEvent(req.org_id);
             return errResp;
         }
 
@@ -195,6 +199,10 @@ global with sharing class UdcOnboardingService {
         Id contactRecordTypeId,
         Boolean isUdcOnboarding
     ) {
+        // Capture uDC identifiers before any DML/savepoint (AD-3: survives rollback)
+        String orgId  = req.org_id;
+        String userId = (req.user != null) ? req.user.user_id : null;
+
         // Build the Account record from payload
         Account acc = new Account();
         acc.RecordTypeId = accountRecordTypeId;
@@ -227,7 +235,7 @@ global with sharing class UdcOnboardingService {
 
         // Build and insert Contact linked to the new Account
         Contact conToInsert = buildContact(req, accToInsert.Id, contactRecordTypeId, isUdcOnboarding);
-        return insertContact(conToInsert, sp, res, accToInsert.Id, 'Account and Contact created successfully.');
+        return insertContact(conToInsert, sp, res, accToInsert.Id, 'Account and Contact created successfully.', orgId, userId);
     }
 
     // =========================================================================
@@ -245,6 +253,10 @@ global with sharing class UdcOnboardingService {
         Id contactRecordTypeId,
         Boolean isUdcOnboarding
     ) {
+        // Capture uDC identifiers before any DML/savepoint (AD-3: survives rollback)
+        String orgId  = req.org_id;
+        String userId = (req.user != null) ? req.user.user_id : null;
+
         // SOQL lookup — never create an Account in this branch
         List<Account> existing = [
             SELECT Id, RecordTypeId, Name, Type, Account_Status__c, Phone,
@@ -263,6 +275,8 @@ global with sharing class UdcOnboardingService {
             errResp.success   = false;
             errResp.errorCode = 'ACCOUNT_NOT_FOUND';
             errResp.message   = 'Account ' + req.org_sfdc_id + ' not found in Salesforce.';
+            // REQ-PE-3: publish FAILED event on 404 — orgId captured before SOQL
+            publishFailedEvent(orgId);
             return errResp;
         }
 
@@ -294,7 +308,7 @@ global with sharing class UdcOnboardingService {
 
         // Build and insert Contact linked to the existing Account
         Contact conToInsert = buildContact(req, accToUpdate.Id, contactRecordTypeId, isUdcOnboarding);
-        return insertContact(conToInsert, sp, res, accToUpdate.Id, 'Account updated and Contact created successfully.');
+        return insertContact(conToInsert, sp, res, accToUpdate.Id, 'Account updated and Contact created successfully.', orgId, userId);
     }
 
     // =========================================================================
@@ -396,7 +410,9 @@ global with sharing class UdcOnboardingService {
 
     /**
      * FLS-enforces and inserts a Contact record.
-     * On success, returns HTTP 201. On failure, rolls back to savepoint and returns HTTP 500.
+     * On success, publishes Sfdc_Accountuser_CreatedSuccess__e and returns HTTP 201.
+     * On failure, rolls back to savepoint, publishes Sfdc_Accountuser_CreatedFailed__e,
+     * and returns HTTP 500.
      * Handles both platform DmlExceptions and the @TestVisible ContactInsertException.
      *
      * @param con         The Contact to insert (pre-built by buildContact)
@@ -404,6 +420,8 @@ global with sharing class UdcOnboardingService {
      * @param res         The RestResponse to set statusCode on
      * @param accountId   The Account Id — included in the success response
      * @param successMsg  The message string to return on HTTP 201
+     * @param orgId       uDC org identifier from request.org_id (may be null)
+     * @param userId      uDC portal user identifier from request.user.user_id (may be null)
      * @return            A populated OnboardingResponse
      */
     private static OnboardingResponse insertContact(
@@ -411,7 +429,9 @@ global with sharing class UdcOnboardingService {
         Savepoint sp,
         RestResponse res,
         Id accountId,
-        String successMsg
+        String successMsg,
+        String orgId,
+        String userId
     ) {
         // FLS enforcement on Contact.
         // UDC_Onboarding__c reapplied after strip — same rationale as Account.
@@ -436,10 +456,14 @@ global with sharing class UdcOnboardingService {
             insert conToInsert;
         } catch (DmlException e) {
             // Platform DML failure — buildDmlErrorResponse rolls back sp and classifies the error.
+            // REQ-PE-5: publish FAILED after rollback; orgId captured before DML (AD-3)
+            publishFailedEvent(orgId);
             return buildDmlErrorResponse(e, res, sp);
         } catch (ContactInsertException e) {
             // Test-only forced failure — rolls back to verify atomicity.
             Database.rollback(sp);
+            // REQ-PE-5: publish FAILED after rollback; publishImmediately survives rollback
+            publishFailedEvent(orgId);
             res.statusCode = 500;
             OnboardingResponse errResp = new OnboardingResponse();
             errResp.success   = false;
@@ -455,6 +479,8 @@ global with sharing class UdcOnboardingService {
         successResp.message   = successMsg;
         successResp.accountId = accountId;
         successResp.contactId = conToInsert.Id;
+        // REQ-PE-1: publish SUCCESS after both records are committed
+        publishSuccessEvent(accountId, orgId, conToInsert.Id, userId);
         return successResp;
     }
 
@@ -488,6 +514,48 @@ global with sharing class UdcOnboardingService {
             return 'user.email is not a valid email address.';
         }
         return null;
+    }
+
+    /**
+     * Publishes Sfdc_Accountuser_CreatedSuccess__e after Account and Contact are committed.
+     * Uses PublishImmediately (default Platform Event behavior — not transactional).
+     * Publish failure is silently swallowed to prevent HTTP response interference.
+     *
+     * @param accountId  Salesforce Account record Id
+     * @param orgId      uDC org identifier (request.org_id — raw string, may be null)
+     * @param contactId  Salesforce Contact record Id
+     * @param userId     uDC portal user identifier (request.user.user_id — may be null)
+     */
+    private static void publishSuccessEvent(Id accountId, String orgId, Id contactId, String userId) {
+        try {
+            Sfdc_Accountuser_CreatedSuccess__e evt = new Sfdc_Accountuser_CreatedSuccess__e();
+            evt.Org_Sfdc_Id__c  = String.valueOf(accountId);
+            evt.Org_Id__c       = orgId;
+            evt.User_Sfdc_Id__c = String.valueOf(contactId);
+            evt.User_Id__c      = userId;
+            EventBus.publish(evt);
+        } catch (Exception e) {
+            // Swallow — publish failure must never alter HTTP response (REQ-PE-4)
+        }
+    }
+
+    /**
+     * Publishes Sfdc_Accountuser_CreatedFailed__e on any non-201 outcome.
+     * Org_Sfdc_Id__c and User_Sfdc_Id__c are intentionally null — no records committed.
+     * Org_Id__c carries the uDC org identifier if present in the request.
+     * Published with PUBLISH_IMMEDIATELY (default) — survives DML rollback.
+     *
+     * @param orgId  uDC org identifier from request.org_id (may be null)
+     */
+    private static void publishFailedEvent(String orgId) {
+        try {
+            Sfdc_Accountuser_CreatedFailed__e evt = new Sfdc_Accountuser_CreatedFailed__e();
+            evt.Org_Id__c = orgId;
+            // Org_Sfdc_Id__c, User_Sfdc_Id__c, User_Id__c remain null by design
+            EventBus.publish(evt);
+        } catch (Exception e) {
+            // Swallow — publish failure must never alter HTTP response (REQ-PE-4)
+        }
     }
 
     /**
