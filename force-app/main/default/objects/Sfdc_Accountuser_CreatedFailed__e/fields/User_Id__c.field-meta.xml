@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>User_Id__c</fullName>
+    <description>uDC portal user identifier (Contact.Portal_User_ID__c). Set on success events; null on failure events.</description>
+    <label>User Id</label>
+    <length>50</length>
+    <type>Text</type>
+</CustomField>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <deploymentStatus>Deployed</deploymentStatus>
+    <description>Published by UdcOnboardingService after Account and Contact are successfully created in Salesforce. Establishes ID mapping between uDC and SFDC.</description>
+    <label>Sfdc Accountuser Created Success</label>
+    <pluralLabel>Sfdc Accountuser Created Successes</pluralLabel>
+    <publishBehavior>PublishImmediately</publishBehavior>
+</CustomObject>

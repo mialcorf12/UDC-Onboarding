@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Org_Id__c</fullName>
+    <description>uDC organization identifier (Account.uLab_Acct_Number__c). Populated on both success and failure events if present in the request payload.</description>
+    <label>Org Id</label>
+    <length>50</length>
+    <type>Text</type>
+</CustomField>
