@@ -82,12 +82,14 @@ private class UdcOnboardingServiceTest {
             + '"org_name": ' + (orgName != null ? '"' + orgName + '"' : 'null') + ','
             + '"org_type": "Dental Practice",'
             + '"org_status": "Prospect",'
+            + '"shipping_address_id": "SHP00001",'
             + '"shipping_address_1": "123 Main St",'
             + '"shipping_city": "Dallas",'
             + '"shipping_country": "US",'
             + '"shipping_region": "TX",'
             + '"shipping_zip": "75001",'
             + '"phone": "2145550100",'
+            + '"billing_address_id": "BLL00001",'
             + '"billing_address_1": "123 Main St",'
             + '"billing_city": "Dallas",'
             + '"billing_country": "US",'
@@ -100,6 +102,7 @@ private class UdcOnboardingServiceTest {
             +   '"last_name": ' + (lastName != null ? '"' + lastName + '"' : 'null') + ','
             +   '"email": "' + (email != null ? email : '') + '",'
             +   '"phone": "2145550101",'
+            +   '"mailing_address_id": "MAL00001",'
             +   '"mailing_address_1": "456 Elm St",'
             +   '"mailing_city": "Dallas",'
             +   '"mailing_country": "US",'
@@ -107,7 +110,10 @@ private class UdcOnboardingServiceTest {
             +   '"mailing_zipcode": "75001",'
             +   '"user_type": "Customer Account Owner",'
             +   '"role": "Orthodontist",'
-            +   '"user_id": "USR001"'
+            +   '"user_id": "USR001",'
+            +   '"tou_accepted_flag": "true",'
+            +   '"tou_updated_ts": "2026-07-03",'
+            +   '"activation_url": "https://portal.example.com/activate/USR001"'
             + '}'
             + '}';
     }
@@ -227,9 +233,10 @@ private class UdcOnboardingServiceTest {
         System.assertNotEquals(null, resp.contactId,
             'Expected contactId to be populated on success');
 
-        // Verify Account persisted with UDC flag
+        // Verify Account persisted with UDC flag and new address ID fields
         List<Account> accounts = [
-            SELECT Id, Name, UDC_Onboarding__c, uLab_Acct_Number__c
+            SELECT Id, Name, UDC_Onboarding__c, uLab_Acct_Number__c,
+                   ShippingAddressID__c, BillingAddressID__c
             FROM Account
             WHERE Id = :resp.accountId
         ];
@@ -239,10 +246,16 @@ private class UdcOnboardingServiceTest {
             'Expected UDC_Onboarding__c = true on Account when onboard_type = udesign.cloud');
         System.assertEquals(12345, accounts[0].uLab_Acct_Number__c,
             'Expected uLab_Acct_Number__c to be populated from org_id');
+        System.assertEquals('SHP00001', accounts[0].ShippingAddressID__c,
+            'Expected ShippingAddressID__c to be populated from shipping_address_id');
+        System.assertEquals('BLL00001', accounts[0].BillingAddressID__c,
+            'Expected BillingAddressID__c to be populated from billing_address_id');
 
-        // Verify Contact persisted with UDC flag and linked to Account
+        // Verify Contact persisted with UDC flag and new fields linked to Account
         List<Contact> contacts = [
-            SELECT Id, AccountId, UDC_Onboarding__c, Portal_User_ID__c
+            SELECT Id, AccountId, UDC_Onboarding__c, Portal_User_ID__c,
+                   Mailing_Address_ID__c, Activation_URL__c,
+                   uLab_Systems_Account_Agreement_Signed__c, Sales_Informed_Agreement_Signed__c
             FROM Contact
             WHERE Id = :resp.contactId
         ];
@@ -254,6 +267,14 @@ private class UdcOnboardingServiceTest {
             'Expected Contact to be linked to the created Account');
         System.assertEquals('USR001', contacts[0].Portal_User_ID__c,
             'Expected Portal_User_ID__c to be populated from user_id');
+        System.assertEquals(true, contacts[0].uLab_Systems_Account_Agreement_Signed__c,
+            'Expected uLab_Systems_Account_Agreement_Signed__c = true when tou_accepted_flag = true');
+        System.assertEquals(Date.newInstance(2026, 7, 3), contacts[0].Sales_Informed_Agreement_Signed__c,
+            'Expected Sales_Informed_Agreement_Signed__c to be populated from tou_updated_ts');
+        System.assertEquals('MAL00001', contacts[0].Mailing_Address_ID__c,
+            'Expected Mailing_Address_ID__c to be populated from mailing_address_id');
+        System.assertEquals('https://portal.example.com/activate/USR001', contacts[0].Activation_URL__c,
+            'Expected Activation_URL__c to be populated from activation_url');
     }
 
     // =========================================================================
@@ -468,7 +489,8 @@ private class UdcOnboardingServiceTest {
 
         // Verify the Account was UPDATED (not a new one inserted) — only 1 Account with this Id
         List<Account> accounts = [
-            SELECT Id, Name, UDC_Onboarding__c, uLab_Acct_Number__c
+            SELECT Id, Name, UDC_Onboarding__c, uLab_Acct_Number__c,
+                   ShippingAddressID__c, BillingAddressID__c
             FROM Account
             WHERE Id = :existing.Id
         ];
@@ -480,15 +502,21 @@ private class UdcOnboardingServiceTest {
             'Expected UDC_Onboarding__c = true on updated Account');
         System.assertEquals(12345, accounts[0].uLab_Acct_Number__c,
             'Expected uLab_Acct_Number__c to be populated from org_id on Account update');
+        System.assertEquals('SHP00001', accounts[0].ShippingAddressID__c,
+            'Expected ShippingAddressID__c to be populated from shipping_address_id on Account update');
+        System.assertEquals('BLL00001', accounts[0].BillingAddressID__c,
+            'Expected BillingAddressID__c to be populated from billing_address_id on Account update');
 
         // Verify no NEW Account was created (total Accounts in test = 1)
         List<Account> allAccounts = [SELECT Id FROM Account];
         System.assertEquals(1, allAccounts.size(),
             'Branch B must not create a new Account — only the pre-existing one should exist');
 
-        // Verify Contact is linked to the pre-existing Account
+        // Verify Contact is linked to the pre-existing Account with new fields populated
         List<Contact> contacts = [
-            SELECT Id, AccountId, UDC_Onboarding__c, LastName, Portal_User_ID__c
+            SELECT Id, AccountId, UDC_Onboarding__c, LastName, Portal_User_ID__c,
+                   Mailing_Address_ID__c, Activation_URL__c,
+                   uLab_Systems_Account_Agreement_Signed__c, Sales_Informed_Agreement_Signed__c
             FROM Contact
             WHERE Id = :resp.contactId
         ];
@@ -502,6 +530,14 @@ private class UdcOnboardingServiceTest {
             'Expected Contact LastName to match payload user.last_name');
         System.assertEquals('USR001', contacts[0].Portal_User_ID__c,
             'Expected Portal_User_ID__c to be populated from user_id');
+        System.assertEquals(true, contacts[0].uLab_Systems_Account_Agreement_Signed__c,
+            'Expected uLab_Systems_Account_Agreement_Signed__c = true when tou_accepted_flag = true');
+        System.assertEquals(Date.newInstance(2026, 7, 3), contacts[0].Sales_Informed_Agreement_Signed__c,
+            'Expected Sales_Informed_Agreement_Signed__c to be populated from tou_updated_ts');
+        System.assertEquals('MAL00001', contacts[0].Mailing_Address_ID__c,
+            'Expected Mailing_Address_ID__c to be populated from mailing_address_id');
+        System.assertEquals('https://portal.example.com/activate/USR001', contacts[0].Activation_URL__c,
+            'Expected Activation_URL__c to be populated from activation_url');
     }
 
     // =========================================================================

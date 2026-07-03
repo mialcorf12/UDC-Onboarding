@@ -45,12 +45,14 @@ global with sharing class UdcOnboardingService {
         public String org_name;
         public String org_type;
         public String org_status;
+        public String shipping_address_id;
         public String shipping_address_1;
         public String shipping_city;
         public String shipping_country;
         public String shipping_region;
         public String shipping_zip;
         public String phone;
+        public String billing_address_id;
         public String billing_address_1;
         public String billing_city;
         public String billing_country;
@@ -71,6 +73,7 @@ global with sharing class UdcOnboardingService {
         public String last_name;
         public String email;
         public String phone;
+        public String mailing_address_id;
         public String mailing_address_1;
         public String mailing_city;
         public String mailing_country;
@@ -79,6 +82,9 @@ global with sharing class UdcOnboardingService {
         public String user_type;
         public String role;
         public String user_id;
+        public String tou_accepted_flag;
+        public String tou_updated_ts;
+        public String activation_url;
     }
 
     /**
@@ -207,8 +213,10 @@ global with sharing class UdcOnboardingService {
             new List<SObject>{ acc }
         );
         Account accToInsert = (Account) accDecision.getRecords()[0];
-        accToInsert.UDC_Onboarding__c   = isUdcOnboarding;
-        accToInsert.uLab_Acct_Number__c = acc.uLab_Acct_Number__c;
+        accToInsert.UDC_Onboarding__c    = isUdcOnboarding;
+        accToInsert.uLab_Acct_Number__c  = acc.uLab_Acct_Number__c;
+        accToInsert.ShippingAddressID__c = acc.ShippingAddressID__c;
+        accToInsert.BillingAddressID__c  = acc.BillingAddressID__c;
 
         try {
             insert accToInsert;
@@ -272,8 +280,10 @@ global with sharing class UdcOnboardingService {
             new List<SObject>{ acc }
         );
         Account accToUpdate = (Account) accDecision.getRecords()[0];
-        accToUpdate.UDC_Onboarding__c   = isUdcOnboarding;
-        accToUpdate.uLab_Acct_Number__c = acc.uLab_Acct_Number__c;
+        accToUpdate.UDC_Onboarding__c    = isUdcOnboarding;
+        accToUpdate.uLab_Acct_Number__c  = acc.uLab_Acct_Number__c;
+        accToUpdate.ShippingAddressID__c = acc.ShippingAddressID__c;
+        accToUpdate.BillingAddressID__c  = acc.BillingAddressID__c;
 
         try {
             update accToUpdate;
@@ -316,18 +326,20 @@ global with sharing class UdcOnboardingService {
         acc.UDC_Onboarding__c = isUdcOnboarding;
 
         // Shipping address
-        acc.ShippingStreet     = req.shipping_address_1;
-        acc.ShippingCity       = req.shipping_city;
-        acc.ShippingCountry    = req.shipping_country;
-        acc.ShippingState      = req.shipping_region;
-        acc.ShippingPostalCode = req.shipping_zip;
+        acc.ShippingAddressID__c = req.shipping_address_id;
+        acc.ShippingStreet       = req.shipping_address_1;
+        acc.ShippingCity         = req.shipping_city;
+        acc.ShippingCountry      = req.shipping_country;
+        acc.ShippingState        = req.shipping_region;
+        acc.ShippingPostalCode   = req.shipping_zip;
 
         // Billing address
-        acc.BillingStreet     = req.billing_address_1;
-        acc.BillingCity       = req.billing_city;
-        acc.BillingCountry    = req.billing_country;
-        acc.BillingState      = req.billing_region;
-        acc.BillingPostalCode = req.billing_zip;
+        acc.BillingAddressID__c = req.billing_address_id;
+        acc.BillingStreet       = req.billing_address_1;
+        acc.BillingCity         = req.billing_city;
+        acc.BillingCountry      = req.billing_country;
+        acc.BillingState        = req.billing_region;
+        acc.BillingPostalCode   = req.billing_zip;
         acc.uLab_Acct_Number__c = String.isBlank(req.org_id) ? null : Decimal.valueOf(req.org_id);
     }
 
@@ -364,10 +376,16 @@ global with sharing class UdcOnboardingService {
 
         con.Contact_Role__c   = req.user.role;
         con.Portal_User_ID__c = req.user.user_id;
+        con.uLab_Systems_Account_Agreement_Signed__c = (req.user.tou_accepted_flag == 'true');
+        con.Sales_Informed_Agreement_Signed__c       = String.isBlank(req.user.tou_updated_ts)
+            ? null
+            : Date.valueOf(req.user.tou_updated_ts);
+        con.Activation_URL__c = req.user.activation_url;
         con.UDC_Onboarding__c = isUdcOnboarding;
 
         // Mailing address
-        con.MailingStreet     = req.user.mailing_address_1;
+        con.Mailing_Address_ID__c = req.user.mailing_address_id;
+        con.MailingStreet         = req.user.mailing_address_1;
         con.MailingCity       = req.user.mailing_city;
         con.MailingCountry    = req.user.mailing_country;
         con.MailingState      = req.user.mailing_state;
@@ -402,8 +420,12 @@ global with sharing class UdcOnboardingService {
             new List<SObject>{ con }
         );
         Contact conToInsert = (Contact) conDecision.getRecords()[0];
-        conToInsert.UDC_Onboarding__c  = con.UDC_Onboarding__c;
-        conToInsert.Portal_User_ID__c  = con.Portal_User_ID__c;
+        conToInsert.UDC_Onboarding__c    = con.UDC_Onboarding__c;
+        conToInsert.Portal_User_ID__c    = con.Portal_User_ID__c;
+        conToInsert.uLab_Systems_Account_Agreement_Signed__c = con.uLab_Systems_Account_Agreement_Signed__c;
+        conToInsert.Sales_Informed_Agreement_Signed__c       = con.Sales_Informed_Agreement_Signed__c;
+        conToInsert.Activation_URL__c    = con.Activation_URL__c;
+        conToInsert.Mailing_Address_ID__c = con.Mailing_Address_ID__c;
 
         try {
             // @TestVisible bypass: forces a controlled failure to test rollback
