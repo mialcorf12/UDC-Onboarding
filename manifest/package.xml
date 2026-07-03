@@ -8,7 +8,20 @@
 	<types>
 		<members>Account.UDC_Onboarding__c</members>
 		<members>Contact.UDC_Onboarding__c</members>
+		<members>Sfdc_Accountuser_CreatedSuccess__e.Org_Id__c</members>
+		<members>Sfdc_Accountuser_CreatedSuccess__e.Org_Sfdc_Id__c</members>
+		<members>Sfdc_Accountuser_CreatedSuccess__e.User_Id__c</members>
+		<members>Sfdc_Accountuser_CreatedSuccess__e.User_Sfdc_Id__c</members>
+		<members>Sfdc_Accountuser_CreatedFailed__e.Org_Id__c</members>
+		<members>Sfdc_Accountuser_CreatedFailed__e.Org_Sfdc_Id__c</members>
+		<members>Sfdc_Accountuser_CreatedFailed__e.User_Id__c</members>
+		<members>Sfdc_Accountuser_CreatedFailed__e.User_Sfdc_Id__c</members>
 		<name>CustomField</name>
+	</types>
+	<types>
+		<members>Sfdc_Accountuser_CreatedSuccess__e</members>
+		<members>Sfdc_Accountuser_CreatedFailed__e</members>
+		<name>CustomObject</name>
 	</types>
 	<version>67.0</version>
 </Package>
