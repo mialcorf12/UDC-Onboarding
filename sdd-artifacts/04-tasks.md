@@ -66,4 +66,43 @@ Chain strategy: pending
 - [x] 5.2 All field mappings verified against spec REQ-3 and REQ-4 — no missed fields
 - [x] 5.3 with sharing declared ✅; no SOQL/DML in loops ✅; stripInaccessible applied before both inserts ✅
 
-## APPLY STATUS: COMPLETE — 27/27 tasks done, 7/7 tests GREEN, 92% coverage
+---
+
+## Phase 6 — Branch B + Error Code Refinement (2026-06-30)
+
+| # | Task | Status |
+|---|------|--------|
+| 28 | Add `org_sfdc_id` field to `OnboardingRequest` inner class | [x] |
+| 29 | Implement branch decision logic in `handlePost` | [x] |
+| 30 | Implement `handleExistingAccount` (SOQL lookup, 404 guard, Account update, savepoint) | [x] |
+| 31 | Reuse `buildContact` + `insertContact` helpers in Branch B | [x] |
+| 32 | RED: write `testOrgSfdcIdNotFound` (expect 404) | [x] |
+| 33 | RED: write `testOrgSfdcIdFoundUpdatesAccountAndCreatesContact` (expect 201, verify update not insert) | [x] |
+| 34 | GREEN: deploy Branch B — Scenarios 8 and 9 pass | [x] |
+| 35 | Extract `buildDmlErrorResponse` helper (rollback + StatusCode classification) | [x] |
+| 36 | Add `@TestVisible forceDmlStatusCodeOverride` field | [x] |
+| 37 | Replace three inline `catch(DmlException)` blocks with `buildDmlErrorResponse` calls | [x] |
+| 38 | RED: write `testDuplicateRecordReturns409` (inject DUPLICATE_VALUE StatusCode) | [x] |
+| 39 | RED: write `testValidationRuleViolationReturns422` (inject FIELD_CUSTOM_VALIDATION_EXCEPTION) | [x] |
+| 40 | GREEN: deploy — all 11/11 tests pass | [x] |
+| 41 | Update HTTP contract comment in class Javadoc (add 409, 422) | [x] |
+| 42 | Update jira/ and sdd-artifacts/ docs | [x] |
+
+---
+
+## Phase 7 — org_id and user_id Fields (2026-06-30)
+
+| # | Task | Status |
+|---|------|--------|
+| 43 | Add `org_id` to `OnboardingRequest` inner class | [x] |
+| 44 | Add `user_id` to `ContactRequest` inner class | [x] |
+| 45 | Map `org_id` → `Account.uLab_Acct_Number__c` in `applyAccountFields` (Decimal.valueOf with null guard) | [x] |
+| 46 | Map `user_id` → `Contact.Portal_User_ID__c` in `buildContact` | [x] |
+| 47 | Reapply `uLab_Acct_Number__c` after `stripInaccessible` in `handleNewAccount` (Branch A) | [x] |
+| 48 | Reapply `uLab_Acct_Number__c` after `stripInaccessible` in `handleExistingAccount` (Branch B) | [x] |
+| 49 | Reapply `Portal_User_ID__c` after `stripInaccessible` in `insertContact` | [x] |
+| 50 | Update `buildPayload` helper with `org_id: "12345"` and `user_id: "USR001"` | [x] |
+| 51 | Add `uLab_Acct_Number__c` + `Portal_User_ID__c` to SOQL and assertions in 3 success tests | [x] |
+| 52 | Deploy and verify: 11/11 tests GREEN | [x] |
+
+**COMPLETE — 52/52 tasks, 11/11 tests GREEN, 2026-06-30**

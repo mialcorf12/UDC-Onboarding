@@ -5,7 +5,7 @@
 **Change**: udc-onboarding-service
 **Mode**: Strict TDD | Full Artifacts (proposal + spec + design + tasks)
 **Test Runner**: sf apex run test -n UdcOnboardingServiceTest --synchronous
-**Executed**: 2026-06-22
+**Executed**: 2026-06-30
 **Org**: 00DEk00000h5xt7MAA | alberto.cordero@ulabsystems.com.audit
 
 ---
@@ -19,9 +19,11 @@
 | Phase 3: GREEN | 8 | 8 | ✅ |
 | Phase 4: VERIFY | 3 | 3 | ✅ |
 | Phase 5: Cleanup | 3 | 3 | ✅ |
-| **TOTAL** | **27** | **27** | ✅ |
+| Phase 6: Branch B + Error Codes | 15 | 15 | ✅ |
+| Phase 7: org_id + user_id Fields | 10 | 10 | ✅ |
+| **TOTAL** | **52** | **52** | ✅ |
 
-All 27 tasks marked [x] in the tasks artifact. No unchecked implementation tasks.
+All 52 tasks marked [x] in the tasks artifact. No unchecked implementation tasks.
 
 ---
 
@@ -30,7 +32,7 @@ All 27 tasks marked [x] in the tasks artifact. No unchecked implementation tasks
 | Check | Result |
 |-------|--------|
 | Compile (deploy) | ✅ PASS — 4 files Active in org |
-| Tests Ran | 7 / 7 |
+| Tests Ran | 11 / 11 |
 | Pass Rate | 100% |
 | Fail Rate | 0% |
 | Coverage on UdcOnboardingService.cls | **92%** (threshold ≥85%) |
@@ -55,6 +57,9 @@ Uncovered lines analysis:
 | REQ-6 | Savepoint before DML; rollback on Contact failure; SOQL asserts Account absent | testRollbackOnContactFailure, testAccountInsertFailure | Line 179: Database.setSavepoint(); Lines 260, 271: Database.rollback(sp) in both catch blocks; testRollbackOnContactFailure SOQL isEmpty assertion | ✅ PASS |
 | REQ-7 | HTTP 201/400/500 via RestContext.response.statusCode; getDmlMessage(0) | All 7 tests assert statusCode | Lines 125, 201, 261, 272, 282: RestContext.response.statusCode; Line 206: e.getDmlMessage(0) | ✅ PASS |
 | REQ-8 | with sharing; stripInaccessible; ≥85% coverage; no DML/SOQL in loops | All 7 tests; 92% coverage confirmed | Line 18: global with sharing; Lines 186–190, 241–245: Security.stripInaccessible(CREATABLE); no loops present | ✅ PASS |
+| REQ-9 | org_sfdc_id branch decision | testOrgSfdcIdNotFound, testOrgSfdcIdFoundUpdatesAccountAndCreatesContact | handleExistingAccount | ✅ PASS |
+| REQ-10 | Refined DML error codes 409/422/500 | testDuplicateRecordReturns409, testValidationRuleViolationReturns422, testAccountInsertFailure | buildDmlErrorResponse | ✅ PASS |
+| REQ-11 | org_id + user_id optional field mapping | testSuccessUdcFlagTrue, testSuccessUdcFlagFalse, testOrgSfdcIdFoundUpdatesAccountAndCreatesContact | applyAccountFields, buildContact, reapplication in handleNewAccount/handleExistingAccount/insertContact | ✅ PASS |
 
 ---
 
@@ -72,8 +77,12 @@ Uncovered lines analysis:
 | 8 | RestContext.response.statusCode | Lines 125, 201, 261, 272, 282: res.statusCode = 400/500/201 | ✅ PRESENT |
 | 9 | Security.stripInaccessible(AccessType.CREATABLE) | Lines 186–190: accDecision; Lines 241–245: conDecision — both before their respective inserts | ✅ PRESENT |
 | 10 | onboard_type (underscore) as field name | Line 37: public String onboard_type; Line 145: req.onboard_type == 'udesign.cloud' | ✅ PRESENT |
+| AD-11 | buildDmlErrorResponse method present, replaces all inline catch blocks | PRESENT |
+| AD-12 | e.getDmlType(0) used for StatusCode classification inside buildDmlErrorResponse | PRESENT |
+| AD-13 | forceDmlStatusCodeOverride @TestVisible field with Test.isRunningTest() guard | PRESENT |
+| AD-14 | uLab_Acct_Number__c and Portal_User_ID__c reapplied after stripInaccessible in all DML blocks | PRESENT |
 
-All 10 design decisions verified present in implementation.
+All 14 design decisions verified present in implementation.
 
 ---
 
@@ -120,11 +129,12 @@ None.
 
 **PASS**
 
-- All 27 tasks complete ✅
-- All 8 spec requirements covered by passing tests ✅
-- All 10 design decisions present in code ✅
-- 7/7 tests GREEN at runtime ✅
+- All 52 tasks complete ✅
+- All 11 spec requirements covered by passing tests ✅
+- All 14 design decisions present in code ✅
+- 11/11 tests GREEN at runtime ✅
 - Coverage 92% ≥ 85% threshold ✅
 - TDD cycle (RED → GREEN → REFACTOR) documented and evidenced ✅
 - 4 documented deviations all confirmed ACCEPTABLE ✅
 - No CRITICAL issues
+- **Last updated**: 2026-06-30

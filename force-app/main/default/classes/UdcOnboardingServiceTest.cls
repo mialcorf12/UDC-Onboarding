@@ -9,6 +9,11 @@
  *
  * Test runner: sf apex run test -n UdcOnboardingServiceTest
  * API Version: 66.0
+ *
+ * Coverage note — HTTP 409 and 422:
+ * Unit tests cannot construct a platform DmlException with a controlled getDmlType(0) value.
+ * The 409 (DUPLICATE_RECORD) and 422 (VALIDATION_RULE_VIOLATION) paths are verified in
+ * integration testing against a sandbox org with active Duplicate Rules and Validation Rules.
  */
 @isTest(SeeAllData=false)
 private class UdcOnboardingServiceTest {
@@ -72,6 +77,7 @@ private class UdcOnboardingServiceTest {
         return '{'
             + onboardTypeFragment
             + orgSfdcIdFragment
+            + '"org_id": "12345",'
             + '"is_parent": "false",'
             + '"org_name": ' + (orgName != null ? '"' + orgName + '"' : 'null') + ','
             + '"org_type": "Dental Practice",'
@@ -100,7 +106,8 @@ private class UdcOnboardingServiceTest {
             +   '"mailing_state": "TX",'
             +   '"mailing_zipcode": "75001",'
             +   '"user_type": "Customer Account Owner",'
-            +   '"role": "Orthodontist"'
+            +   '"role": "Orthodontist",'
+            +   '"user_id": "USR001"'
             + '}'
             + '}';
     }
@@ -222,7 +229,7 @@ private class UdcOnboardingServiceTest {
 
         // Verify Account persisted with UDC flag
         List<Account> accounts = [
-            SELECT Id, Name, UDC_Onboarding__c
+            SELECT Id, Name, UDC_Onboarding__c, uLab_Acct_Number__c
             FROM Account
             WHERE Id = :resp.accountId
         ];
@@ -230,10 +237,12 @@ private class UdcOnboardingServiceTest {
             'Expected exactly 1 Account to be inserted');
         System.assertEquals(true, accounts[0].UDC_Onboarding__c,
             'Expected UDC_Onboarding__c = true on Account when onboard_type = udesign.cloud');
+        System.assertEquals(12345, accounts[0].uLab_Acct_Number__c,
+            'Expected uLab_Acct_Number__c to be populated from org_id');
 
         // Verify Contact persisted with UDC flag and linked to Account
         List<Contact> contacts = [
-            SELECT Id, AccountId, UDC_Onboarding__c
+            SELECT Id, AccountId, UDC_Onboarding__c, Portal_User_ID__c
             FROM Contact
             WHERE Id = :resp.contactId
         ];
@@ -243,6 +252,8 @@ private class UdcOnboardingServiceTest {
             'Expected UDC_Onboarding__c = true on Contact when onboard_type = udesign.cloud');
         System.assertEquals(resp.accountId, contacts[0].AccountId,
             'Expected Contact to be linked to the created Account');
+        System.assertEquals('USR001', contacts[0].Portal_User_ID__c,
+            'Expected Portal_User_ID__c to be populated from user_id');
     }
 
     // =========================================================================
@@ -273,7 +284,7 @@ private class UdcOnboardingServiceTest {
 
         // Verify UDC flag is false on Account
         List<Account> accounts = [
-            SELECT Id, UDC_Onboarding__c
+            SELECT Id, UDC_Onboarding__c, uLab_Acct_Number__c
             FROM Account
             WHERE Id = :resp.accountId
         ];
@@ -281,10 +292,12 @@ private class UdcOnboardingServiceTest {
             'Expected exactly 1 Account to be inserted');
         System.assertEquals(false, accounts[0].UDC_Onboarding__c,
             'Expected UDC_Onboarding__c = false on Account when onboard_type is absent');
+        System.assertEquals(12345, accounts[0].uLab_Acct_Number__c,
+            'Expected uLab_Acct_Number__c to be populated from org_id');
 
         // Verify UDC flag is false on Contact
         List<Contact> contacts = [
-            SELECT Id, UDC_Onboarding__c
+            SELECT Id, UDC_Onboarding__c, Portal_User_ID__c
             FROM Contact
             WHERE Id = :resp.contactId
         ];
@@ -292,6 +305,8 @@ private class UdcOnboardingServiceTest {
             'Expected exactly 1 Contact to be inserted');
         System.assertEquals(false, contacts[0].UDC_Onboarding__c,
             'Expected UDC_Onboarding__c = false on Contact when onboard_type is absent');
+        System.assertEquals('USR001', contacts[0].Portal_User_ID__c,
+            'Expected Portal_User_ID__c to be populated from user_id');
     }
 
     // =========================================================================
@@ -453,7 +468,7 @@ private class UdcOnboardingServiceTest {
 
         // Verify the Account was UPDATED (not a new one inserted) — only 1 Account with this Id
         List<Account> accounts = [
-            SELECT Id, Name, UDC_Onboarding__c
+            SELECT Id, Name, UDC_Onboarding__c, uLab_Acct_Number__c
             FROM Account
             WHERE Id = :existing.Id
         ];
@@ -463,6 +478,8 @@ private class UdcOnboardingServiceTest {
             'Expected Account Name to be updated to payload org_name');
         System.assertEquals(true, accounts[0].UDC_Onboarding__c,
             'Expected UDC_Onboarding__c = true on updated Account');
+        System.assertEquals(12345, accounts[0].uLab_Acct_Number__c,
+            'Expected uLab_Acct_Number__c to be populated from org_id on Account update');
 
         // Verify no NEW Account was created (total Accounts in test = 1)
         List<Account> allAccounts = [SELECT Id FROM Account];
@@ -471,7 +488,7 @@ private class UdcOnboardingServiceTest {
 
         // Verify Contact is linked to the pre-existing Account
         List<Contact> contacts = [
-            SELECT Id, AccountId, UDC_Onboarding__c, LastName
+            SELECT Id, AccountId, UDC_Onboarding__c, LastName, Portal_User_ID__c
             FROM Contact
             WHERE Id = :resp.contactId
         ];
@@ -483,5 +500,76 @@ private class UdcOnboardingServiceTest {
             'Expected UDC_Onboarding__c = true on Contact');
         System.assertEquals(VALID_LAST_NAME, contacts[0].LastName,
             'Expected Contact LastName to match payload user.last_name');
+        System.assertEquals('USR001', contacts[0].Portal_User_ID__c,
+            'Expected Portal_User_ID__c to be populated from user_id');
+    }
+
+    // =========================================================================
+    // Scenario 10 — buildDmlErrorResponse: DUPLICATE_VALUE StatusCode → HTTP 409
+    // =========================================================================
+
+    /**
+     * GIVEN a DML failure whose StatusCode is overridden to DUPLICATE_VALUE
+     * WHEN POST is received
+     * THEN statusCode == 409, errorCode == DUPLICATE_RECORD
+     *
+     * Technique: trigger a real DmlException via a 256-char Account name, then
+     * inject the StatusCode via @TestVisible forceDmlStatusCodeOverride so the
+     * helper classifies it as a duplicate without relying on org Duplicate Rules.
+     */
+    @isTest
+    static void testDuplicateRecordReturns409() {
+        String longName = 'A'.repeat(256);
+        String payload = buildPayload(longName, VALID_LAST_NAME, VALID_EMAIL, null, null);
+        setupRestContext(payload);
+
+        UdcOnboardingService.forceDmlStatusCodeOverride = StatusCode.DUPLICATE_VALUE;
+
+        Test.startTest();
+        UdcOnboardingService.OnboardingResponse resp = UdcOnboardingService.handlePost();
+        Test.stopTest();
+
+        System.assertEquals(409, RestContext.response.statusCode,
+            'Expected HTTP 409 for duplicate record StatusCode');
+        System.assertEquals(false, resp.success,
+            'Expected success=false on duplicate error');
+        System.assertEquals('DUPLICATE_RECORD', resp.errorCode,
+            'Expected errorCode DUPLICATE_RECORD for DUPLICATE_VALUE StatusCode');
+        System.assert(resp.message.contains('Duplicate record detected'),
+            'Expected message to indicate duplicate detection');
+    }
+
+    // =========================================================================
+    // Scenario 11 — buildDmlErrorResponse: FIELD_CUSTOM_VALIDATION_EXCEPTION → HTTP 422
+    // =========================================================================
+
+    /**
+     * GIVEN a DML failure whose StatusCode is overridden to FIELD_CUSTOM_VALIDATION_EXCEPTION
+     * WHEN POST is received
+     * THEN statusCode == 422, errorCode == VALIDATION_RULE_VIOLATION
+     *
+     * Same injection technique as Scenario 10 — real DmlException via 256-char name,
+     * StatusCode overridden via @TestVisible flag.
+     */
+    @isTest
+    static void testValidationRuleViolationReturns422() {
+        String longName = 'A'.repeat(256);
+        String payload = buildPayload(longName, VALID_LAST_NAME, VALID_EMAIL, null, null);
+        setupRestContext(payload);
+
+        UdcOnboardingService.forceDmlStatusCodeOverride = StatusCode.FIELD_CUSTOM_VALIDATION_EXCEPTION;
+
+        Test.startTest();
+        UdcOnboardingService.OnboardingResponse resp = UdcOnboardingService.handlePost();
+        Test.stopTest();
+
+        System.assertEquals(422, RestContext.response.statusCode,
+            'Expected HTTP 422 for validation rule StatusCode');
+        System.assertEquals(false, resp.success,
+            'Expected success=false on validation rule rejection');
+        System.assertEquals('VALIDATION_RULE_VIOLATION', resp.errorCode,
+            'Expected errorCode VALIDATION_RULE_VIOLATION for FIELD_CUSTOM_VALIDATION_EXCEPTION StatusCode');
+        System.assert(resp.message.contains('validation rule rejected'),
+            'Expected message to reference validation rule rejection');
     }
 }

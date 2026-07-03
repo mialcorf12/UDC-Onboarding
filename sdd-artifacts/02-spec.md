@@ -81,3 +81,111 @@ The system MUST declare `with sharing`. FLS and CRUD MUST be enforced via `Secur
 - GIVEN a test simulating a Contact insert failure
 - WHEN the test executes
 - THEN the test asserts via SOQL that the Account was not persisted.
+
+---
+
+## REQ-9: org_sfdc_id Optional Field — Branch Decision
+
+**Priority**: MUST  
+**Added**: 2026-06-30
+
+### Scenario 9a — Branch A (org_sfdc_id absent)
+```gherkin
+Given the POST payload has a blank or null org_sfdc_id
+When the service processes the request
+Then it creates a new Account and a new Contact (Branch A behavior)
+And returns HTTP 201
+```
+
+### Scenario 9b — Branch B happy path
+```gherkin
+Given the POST payload includes a non-blank org_sfdc_id
+And an Account with that Salesforce Id exists in the org
+When the service processes the request
+Then it updates the existing Account with the payload values
+And creates a new Contact linked to that Account
+And returns HTTP 201 with the existing accountId and the new contactId
+```
+
+### Scenario 9c — Branch B 404
+```gherkin
+Given the POST payload includes a non-blank org_sfdc_id
+And no Account with that Salesforce Id exists in the org
+When the service processes the request
+Then it returns HTTP 404
+And errorCode is "ACCOUNT_NOT_FOUND"
+And no DML is executed
+```
+
+---
+
+## REQ-10: Refined DML Error HTTP Codes
+
+**Priority**: MUST  
+**Added**: 2026-06-30
+
+### Scenario 10a — Duplicate record
+```gherkin
+Given a DML operation is rejected with StatusCode DUPLICATE_VALUE or DUPLICATES_DETECTED
+When buildDmlErrorResponse classifies the error
+Then the response status is HTTP 409
+And errorCode is "DUPLICATE_RECORD"
+And the transaction is rolled back
+```
+
+### Scenario 10b — Validation rule violation
+```gherkin
+Given a DML operation is rejected with StatusCode FIELD_CUSTOM_VALIDATION_EXCEPTION or REQUIRED_FIELD_MISSING
+When buildDmlErrorResponse classifies the error
+Then the response status is HTTP 422
+And errorCode is "VALIDATION_RULE_VIOLATION"
+And the transaction is rolled back
+```
+
+### Scenario 10c — Unexpected platform error
+```gherkin
+Given a DML operation fails with any other StatusCode
+When buildDmlErrorResponse classifies the error
+Then the response status is HTTP 500
+And errorCode is "SALESFORCE_DML_ERROR"
+And the transaction is rolled back
+```
+
+---
+
+## REQ-11: org_id and user_id Optional Payload Fields
+
+**Priority**: SHOULD  
+**Added**: 2026-06-30
+
+### Scenario 11a — org_id persisted to Account
+```gherkin
+Given the POST payload includes a non-blank org_id value
+When the service processes the request
+Then Account.uLab_Acct_Number__c is set to the Decimal equivalent of org_id
+```
+
+### Scenario 11b — org_id absent
+```gherkin
+Given the POST payload has a blank or absent org_id
+When the service processes the request
+Then Account.uLab_Acct_Number__c is left null
+```
+
+### Scenario 11c — user_id persisted to Contact
+```gherkin
+Given the POST payload includes a non-blank user_id value of 10 characters or fewer
+When the service processes the request
+Then Contact.Portal_User_ID__c is set to that value
+```
+
+### Scenario 11d — user_id absent
+```gherkin
+Given the POST payload has a blank or absent user_id
+When the service processes the request
+Then Contact.Portal_User_ID__c is left null
+```
+
+> **Constraint**: `user_id` maps to a field with a maximum length of 10 characters.
+> The portal MUST enforce this limit before sending the payload. Values exceeding 10 characters
+> will cause a DML error (HTTP 500) at the Salesforce layer.
