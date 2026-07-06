@@ -187,7 +187,8 @@ global with sharing class UdcOnboardingService {
                 errResp.errorCode = 'INVALID_INPUT';
                 errResp.message   = 'Validation failed: ' + validationError;
                 // REQ-PE-2: publish FAILED event on 400 — no Account exists yet; accountId=null
-                publishFailedEvent(null, req.org_id, (req.user != null) ? req.user.user_id : null);
+                publishFailedEvent(null, req.org_id, (req.user != null) ? req.user.user_id : null,
+                    res.statusCode, errResp.errorCode, errResp.message);
                 return errResp;
             }
 
@@ -202,7 +203,8 @@ global with sharing class UdcOnboardingService {
                 errResp.errorCode = 'INVALID_INPUT';
                 errResp.message   = 'Validation failed: ' + validationError;
                 // REQ-PE-2: publish FAILED event on 400 — no Account exists yet; accountId=null
-                publishFailedEvent(null, req.org_id, (req.user != null) ? req.user.user_id : null);
+                publishFailedEvent(null, req.org_id, (req.user != null) ? req.user.user_id : null,
+                    res.statusCode, errResp.errorCode, errResp.message);
                 return errResp;
             }
 
@@ -303,7 +305,7 @@ global with sharing class UdcOnboardingService {
             errResp.errorCode = 'ACCOUNT_NOT_FOUND';
             errResp.message   = 'Account ' + req.org_sfdc_id + ' not found in Salesforce.';
             // REQ-PE-3: publish FAILED event on 404 — Account not found; accountId=null
-            publishFailedEvent(null, orgId, userId);
+            publishFailedEvent(null, orgId, userId, res.statusCode, errResp.errorCode, errResp.message);
             return errResp;
         }
 
@@ -537,21 +539,24 @@ global with sharing class UdcOnboardingService {
             }
             insert conToInsert;
         } catch (DmlException e) {
-            // Platform DML failure — buildDmlErrorResponse rolls back sp and classifies the error.
+            // Platform DML failure — buildDmlErrorResponse rolls back sp, classifies the error,
+            // and sets res.statusCode. Compute it BEFORE publishing so the event carries the
+            // same statusCode/errorCode/message actually returned to the caller.
             // accountId is the Account already committed; Contact failed → pass accountId to event.
-            publishFailedEvent(accountId, orgId, userId);
-            return buildDmlErrorResponse(e, res, sp);
+            OnboardingResponse errResp = buildDmlErrorResponse(e, res, sp);
+            publishFailedEvent(accountId, orgId, userId, res.statusCode, errResp.errorCode, errResp.message);
+            return errResp;
         } catch (ContactInsertException e) {
             // Test-only forced failure — rolls back to verify atomicity.
             Database.rollback(sp);
-            // accountId is the Account committed before the forced Contact failure.
-            publishFailedEvent(accountId, orgId, userId);
             res.statusCode = 500;
             OnboardingResponse errResp = new OnboardingResponse();
             errResp.success   = false;
             errResp.errorCode = 'SALESFORCE_DML_ERROR';
             errResp.message   = 'The transaction was rolled back. Original Salesforce error: '
                                 + e.getMessage();
+            // accountId is the Account committed before the forced Contact failure.
+            publishFailedEvent(accountId, orgId, userId, res.statusCode, errResp.errorCode, errResp.message);
             return errResp;
         }
 
@@ -634,16 +639,31 @@ global with sharing class UdcOnboardingService {
      * User_Sfdc_Id__c is always null — Contact was never committed on the failure path.
      * Published with PUBLISH_IMMEDIATELY (default) — survives DML rollback.
      *
-     * @param accountId  Salesforce Account record Id; null if no Account was committed
-     * @param orgId      uDC org identifier from request.org_id (may be null)
-     * @param userId     uDC portal user identifier from request.user.user_id (may be null)
+     * @param accountId     Salesforce Account record Id; null if no Account was committed
+     * @param orgId         uDC org identifier from request.org_id (may be null)
+     * @param userId        uDC portal user identifier from request.user.user_id (may be null)
+     * @param statusCode    HTTP status code set on RestResponse for this failure (mirrors res.statusCode)
+     * @param errorCode     Machine-readable error code (mirrors OnboardingResponse.errorCode)
+     * @param errorMessage  Human-readable error message (mirrors OnboardingResponse.message); truncated to 255 chars
      */
-    private static void publishFailedEvent(Id accountId, String orgId, String userId) {
+    private static void publishFailedEvent(
+        Id accountId,
+        String orgId,
+        String userId,
+        Integer statusCode,
+        String errorCode,
+        String errorMessage
+    ) {
         try {
             Sfdc_Accountuser_CreatedFailed__e evt = new Sfdc_Accountuser_CreatedFailed__e();
-            evt.Org_Sfdc_Id__c = accountId != null ? String.valueOf(accountId) : null;
-            evt.Org_Id__c      = orgId;
-            evt.User_Id__c     = userId;
+            evt.Org_Sfdc_Id__c   = accountId != null ? String.valueOf(accountId) : null;
+            evt.Org_Id__c        = orgId;
+            evt.User_Id__c       = userId;
+            evt.Status_Code__c   = statusCode;
+            evt.Error_Code__c    = errorCode;
+            evt.Error_Message__c = (errorMessage != null && errorMessage.length() > 255)
+                ? errorMessage.substring(0, 255)
+                : errorMessage;
             // User_Sfdc_Id__c remains null — Contact was never committed on failure path
             EventBus.publish(evt);
             // Capture for test assertions — @TestVisible capture list alternative

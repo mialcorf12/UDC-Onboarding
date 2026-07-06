@@ -847,6 +847,12 @@ private class UdcOnboardingServiceTest {
             'Failed event User_Id__c must carry user_id from the payload');
         System.assertEquals(null, evt.User_Sfdc_Id__c,
             'Failed event User_Sfdc_Id__c must be null — no Contact committed');
+        System.assertEquals(RestContext.response.statusCode, Integer.valueOf(evt.Status_Code__c),
+            'Failed event Status_Code__c must equal the HTTP status returned to the caller');
+        System.assertEquals(resp.errorCode, evt.Error_Code__c,
+            'Failed event Error_Code__c must equal the errorCode returned to the caller');
+        System.assertEquals(resp.message, evt.Error_Message__c,
+            'Failed event Error_Message__c must equal the message returned to the caller');
 
         // Then — 0 success events
         List<Sfdc_Accountuser_CreatedSuccess__e> successEvents = getPublishedSuccessEvents();
@@ -944,6 +950,15 @@ private class UdcOnboardingServiceTest {
             'Failed event User_Id__c must carry the user_id from the payload');
         System.assertEquals(null, evt.User_Sfdc_Id__c,
             'Failed event User_Sfdc_Id__c must be null — Contact was never committed');
+        System.assertEquals(RestContext.response.statusCode, Integer.valueOf(evt.Status_Code__c),
+            'Failed event Status_Code__c must equal the HTTP status returned to the caller');
+        System.assertEquals(resp.errorCode, evt.Error_Code__c,
+            'Failed event Error_Code__c must equal the errorCode returned to the caller');
+        String expectedTruncatedMessage = resp.message.length() > 255
+            ? resp.message.substring(0, 255)
+            : resp.message;
+        System.assertEquals(expectedTruncatedMessage, evt.Error_Message__c,
+            'Failed event Error_Message__c must equal the message returned to the caller, truncated to 255 chars');
 
         // Then — 0 success events
         List<Sfdc_Accountuser_CreatedSuccess__e> successEvents = getPublishedSuccessEvents();
@@ -1006,6 +1021,12 @@ private class UdcOnboardingServiceTest {
             'Failed event Org_Sfdc_Id__c must carry the Account Id — it existed at publish time before rollback');
         System.assertEquals(null, evt.User_Sfdc_Id__c,
             'Failed event User_Sfdc_Id__c must be null — Contact was never committed');
+        System.assertEquals(RestContext.response.statusCode, Integer.valueOf(evt.Status_Code__c),
+            'Failed event Status_Code__c must equal the HTTP status returned to the caller');
+        System.assertEquals(resp.errorCode, evt.Error_Code__c,
+            'Failed event Error_Code__c must equal the errorCode returned to the caller');
+        System.assertEquals(resp.message, evt.Error_Message__c,
+            'Failed event Error_Message__c must equal the message returned to the caller');
 
         // Then — 0 success events
         List<Sfdc_Accountuser_CreatedSuccess__e> successEvents = getPublishedSuccessEvents();
@@ -1109,6 +1130,12 @@ private class UdcOnboardingServiceTest {
             'Failed event User_Sfdc_Id__c must be null — no Contact was committed');
         System.assertEquals('USR001', evt.User_Id__c,
             'Failed event User_Id__c must carry user_id from the payload');
+        System.assertEquals(RestContext.response.statusCode, Integer.valueOf(evt.Status_Code__c),
+            'Failed event Status_Code__c must equal the HTTP status returned to the caller');
+        System.assertEquals(resp.errorCode, evt.Error_Code__c,
+            'Failed event Error_Code__c must equal the errorCode returned to the caller');
+        System.assertEquals(resp.message, evt.Error_Message__c,
+            'Failed event Error_Message__c must equal the message returned to the caller');
 
         // Then — 0 success events
         List<Sfdc_Accountuser_CreatedSuccess__e> successEvents = getPublishedSuccessEvents();
