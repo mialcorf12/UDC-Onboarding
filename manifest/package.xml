@@ -19,8 +19,8 @@
 		<name>CustomField</name>
 	</types>
 	<types>
-		<members>Sfdc_Accountuser_CreatedSuccess__e</members>
-		<members>Sfdc_Accountuser_CreatedFailed__e</members>
+		<members>sfdc_accountuser_createdFailed__e</members>
+		<members>sfdc_accountuser_createdSuccess__e</members>
 		<name>CustomObject</name>
 	</types>
 	<version>67.0</version>

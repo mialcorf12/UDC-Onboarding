@@ -2,7 +2,8 @@
 <CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
     <deploymentStatus>Deployed</deploymentStatus>
     <description>Published by UdcOnboardingService when Account or Contact creation fails. Org_Sfdc_Id__c and User_Sfdc_Id__c are null (no records committed). Org_Id__c carries the uDC org identifier from the request payload if present.</description>
-    <label>Sfdc Accountuser Created Failed</label>
-    <pluralLabel>Sfdc Accountuser Created Faileds</pluralLabel>
+    <eventType>HighVolume</eventType>
+    <label>sfdc_accountuser_createdFailed</label>
+    <pluralLabel>sfdc_accountuser_createdFaileds</pluralLabel>
     <publishBehavior>PublishImmediately</publishBehavior>
 </CustomObject>
