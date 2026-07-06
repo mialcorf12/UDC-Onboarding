@@ -1116,4 +1116,94 @@ private class UdcOnboardingServiceTest {
             'Expected 0 Sfdc_Accountuser_CreatedSuccess__e on Account not found');
     }
 
+    @IsTest
+    static void testOrgSfdcIdFoundPreservesFieldsOmittedFromPayload() {
+        // Insert a pre-existing Account with values in fields the payload below will omit
+        Account existing = new Account(
+            Name                    = 'Original Name',
+            Type                    = 'Other',
+            Account_Status__c       = 'Prospect',
+            Phone                   = '9725550199',
+            Is_Parent__c            = true,
+            ShippingCity            = 'Original Shipping City',
+            RecordTypeId            = Schema.SObjectType.Account
+                .getRecordTypeInfosByDeveloperName()
+                .get('Commercial')
+                .getRecordTypeId()
+        );
+        insert existing;
+
+        // Payload omits phone, is_parent, and shipping_city (null) — everything else present
+        String payload = '{'
+            + '"org_sfdc_id": "' + existing.Id + '",'
+            + '"org_id": "12345",'
+            + '"org_name": "' + VALID_ORG_NAME + '",'
+            + '"org_type": "Dental Practice",'
+            + '"org_status": "Prospect",'
+            + '"shipping_address_id": "SHP00001",'
+            + '"shipping_address_1": "123 Main St",'
+            + '"shipping_country": "US",'
+            + '"shipping_region": "TX",'
+            + '"shipping_zip": "75001",'
+            + '"billing_address_id": "BLL00001",'
+            + '"billing_address_1": "123 Main St",'
+            + '"billing_city": "Dallas",'
+            + '"billing_country": "US",'
+            + '"billing_region": "TX",'
+            + '"billing_zip": "75001",'
+            + '"signature_required": "false",'
+            + '"out_of_service_area": "false",'
+            + '"user": {'
+            +   '"first_name": "John",'
+            +   '"last_name": "' + VALID_LAST_NAME + '",'
+            +   '"email": "' + VALID_EMAIL + '",'
+            +   '"phone": "2145550101",'
+            +   '"mailing_address_id": "MAL00001",'
+            +   '"mailing_address_1": "456 Elm St",'
+            +   '"mailing_city": "Dallas",'
+            +   '"mailing_country": "US",'
+            +   '"mailing_state": "TX",'
+            +   '"mailing_zipcode": "75001",'
+            +   '"user_type": "Customer Account Owner",'
+            +   '"role": "Orthodontist",'
+            +   '"user_id": "USR001",'
+            +   '"tou_accepted_flag": "true",'
+            +   '"tou_updated_ts": "2026-07-03",'
+            +   '"activation_url": "https://portal.example.com/activate/USR001"'
+            + '}'
+            + '}';
+        setupRestContext(payload);
+
+        Test.startTest();
+        UdcOnboardingService.OnboardingResponse resp = UdcOnboardingService.handlePost();
+        Test.stopTest();
+
+        System.assertEquals(201, RestContext.response.statusCode,
+            'Expected HTTP 201 when org_sfdc_id matches an existing Account');
+        System.assertEquals(true, resp.success,
+            'Expected success=true for Branch B partial-merge scenario');
+
+        Account updated = [
+            SELECT Name, Phone, Is_Parent__c, ShippingCity, ShippingStreet, BillingCity
+            FROM Account
+            WHERE Id = :existing.Id
+        ];
+
+        // Fields present in the payload must be updated
+        System.assertEquals(VALID_ORG_NAME, updated.Name,
+            'Expected Name to be updated from payload org_name');
+        System.assertEquals('123 Main St', updated.ShippingStreet,
+            'Expected ShippingStreet to be updated from payload shipping_address_1');
+        System.assertEquals('Dallas', updated.BillingCity,
+            'Expected BillingCity to be updated from payload billing_city');
+
+        // Fields omitted (null) from the payload must preserve the existing Account values
+        System.assertEquals('9725550199', updated.Phone,
+            'Expected Phone to be preserved when payload does not send phone');
+        System.assertEquals(true, updated.Is_Parent__c,
+            'Expected Is_Parent__c to be preserved when payload does not send is_parent');
+        System.assertEquals('Original Shipping City', updated.ShippingCity,
+            'Expected ShippingCity to be preserved when payload does not send shipping_city');
+    }
+
 }

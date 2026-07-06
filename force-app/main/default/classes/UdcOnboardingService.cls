@@ -54,6 +54,8 @@ global with sharing class UdcOnboardingService {
      * Note: onboard_type uses underscore (Apex identifiers cannot contain hyphens).
      */
     global class OnboardingRequest {
+        public String org_id;
+        public String org_sfdc_id;
         public String onboard_type;
         public String is_parent;
         public String org_name;
@@ -74,8 +76,6 @@ global with sharing class UdcOnboardingService {
         public String billing_zip;
         public String signature_required;
         public String out_of_service_area;
-        public String org_sfdc_id;
-        public String org_id;
         public ContactRequest user;
     }
 
@@ -83,19 +83,19 @@ global with sharing class UdcOnboardingService {
      * Nested contact/user wrapper inside the root request.
      */
     global class ContactRequest {
+        public String user_id;
         public String first_name;
         public String last_name;
         public String email;
         public String phone;
+        public String user_type;
+        public String role;
         public String mailing_address_id;
         public String mailing_address_1;
         public String mailing_city;
         public String mailing_country;
         public String mailing_state;
         public String mailing_zipcode;
-        public String user_type;
-        public String role;
-        public String user_id;
         public String tou_accepted_flag;
         public String tou_updated_ts;
         public String activation_url;
@@ -159,20 +159,7 @@ global with sharing class UdcOnboardingService {
             OnboardingRequest.class
         );
 
-        // Step 2: Validate inputs before any DML — yields HTTP 400 on failure
-        String validationError = validateInput(req);
-        if (validationError != null) {
-            res.statusCode = 400;
-            OnboardingResponse errResp = new OnboardingResponse();
-            errResp.success   = false;
-            errResp.errorCode = 'INVALID_INPUT';
-            errResp.message   = 'Validation failed: ' + validationError;
-            // REQ-PE-2: publish FAILED event on 400 — no Account exists yet; accountId=null
-            publishFailedEvent(null, req.org_id, (req.user != null) ? req.user.user_id : null);
-            return errResp;
-        }
-
-        // Step 3: Resolve RecordType IDs dynamically (portable across orgs)
+        // Step 2: Resolve RecordType IDs dynamically (portable across orgs)
         Id accountRecordTypeId = Schema.SObjectType.Account
             .getRecordTypeInfosByDeveloperName()
             .get('Commercial')
@@ -191,8 +178,34 @@ global with sharing class UdcOnboardingService {
         //                  org_sfdc_id blank/null → create new Account
         // =====================================================================
         if (String.isNotBlank(req.org_sfdc_id)) {
+            // Step 3: Validate inputs before any DML — yields HTTP 400 on failure
+            String validationError = validateInput(req, 'B');
+            if (validationError != null) {
+                res.statusCode = 400;
+                OnboardingResponse errResp = new OnboardingResponse();
+                errResp.success   = false;
+                errResp.errorCode = 'INVALID_INPUT';
+                errResp.message   = 'Validation failed: ' + validationError;
+                // REQ-PE-2: publish FAILED event on 400 — no Account exists yet; accountId=null
+                publishFailedEvent(null, req.org_id, (req.user != null) ? req.user.user_id : null);
+                return errResp;
+            }
+
             return handleExistingAccount(req, res, contactRecordTypeId, isUdcOnboarding);
         } else {
+            // Step 3: Validate inputs before any DML — yields HTTP 400 on failure
+            String validationError = validateInput(req, 'A');
+            if (validationError != null) {
+                res.statusCode = 400;
+                OnboardingResponse errResp = new OnboardingResponse();
+                errResp.success   = false;
+                errResp.errorCode = 'INVALID_INPUT';
+                errResp.message   = 'Validation failed: ' + validationError;
+                // REQ-PE-2: publish FAILED event on 400 — no Account exists yet; accountId=null
+                publishFailedEvent(null, req.org_id, (req.user != null) ? req.user.user_id : null);
+                return errResp;
+            }
+
             return handleNewAccount(req, res, accountRecordTypeId, contactRecordTypeId, isUdcOnboarding);
         }
     }
@@ -276,8 +289,8 @@ global with sharing class UdcOnboardingService {
             SELECT Id, RecordTypeId, Name, Type, Account_Status__c, Phone,
                    Is_Parent__c, Signature_Required__c, Out_of_Service_Area__c,
                    UDC_Onboarding__c,
-                   ShippingStreet, ShippingCity, ShippingCountry, ShippingState, ShippingPostalCode,
-                   BillingStreet, BillingCity, BillingCountry, BillingState, BillingPostalCode
+                   ShippingAddressID__c, ShippingStreet, ShippingCity, ShippingCountry, ShippingState, ShippingPostalCode,
+                   BillingAddressID__c, BillingStreet, BillingCity, BillingCountry, BillingState, BillingPostalCode
             FROM Account
             WHERE Id = :req.org_sfdc_id
             LIMIT 1
@@ -294,9 +307,10 @@ global with sharing class UdcOnboardingService {
             return errResp;
         }
 
-        // Apply payload values onto the retrieved Account record
+        // Apply payload values onto the retrieved Account record.
+        // Uses partial merge: blank payload fields preserve existing Account values.
         Account acc = existing[0];
-        applyAccountFields(acc, req, isUdcOnboarding);
+        applyAccountFieldsPartial(acc, req, isUdcOnboarding);
 
         // Set savepoint before DML to cover update + Contact insert atomically
         Savepoint sp = Database.setSavepoint();
@@ -376,6 +390,52 @@ global with sharing class UdcOnboardingService {
         // inaccessible in SeeAllData=false test isolation. Production behavior is unchanged.
         if (!Test.isRunningTest()) {
             acc.uLab_Acct_Number__c = String.isBlank(req.org_id) ? null : Decimal.valueOf(req.org_id);
+        }
+    }
+
+    /**
+     * Applies payload field values onto an EXISTING Account (Branch B only).
+     * Unlike applyAccountFields, this performs a partial merge: any field whose
+     * payload value is blank/null is left untouched, preserving the Account's
+     * current value instead of overwriting it with null/false.
+     *
+     * @param acc              The existing Account sObject to update (mutated in place)
+     * @param req              The deserialized request payload
+     * @param isUdcOnboarding  Pre-computed UDC flag value
+     */
+    private static void applyAccountFieldsPartial(Account acc, OnboardingRequest req, Boolean isUdcOnboarding) {
+        if (String.isNotBlank(req.org_name))   { acc.Name = req.org_name; }
+        if (String.isNotBlank(req.org_type))   { acc.Type              = req.org_type; }
+        if (String.isNotBlank(req.org_status)) { acc.Account_Status__c = req.org_status; }
+        if (String.isNotBlank(req.phone))      { acc.Phone             = req.phone; }
+
+        // String → Boolean coercion: only touch the flag when the payload sent it explicitly
+        if (String.isNotBlank(req.is_parent))           { acc.Is_Parent__c           = (req.is_parent           == 'true'); }
+        if (String.isNotBlank(req.signature_required))  { acc.Signature_Required__c  = (req.signature_required  == 'true'); }
+        if (String.isNotBlank(req.out_of_service_area)) { acc.Out_of_Service_Area__c = (req.out_of_service_area == 'true'); }
+
+        // UDC flag set by endpoint logic (not by caller) — always applied, like Branch A
+        acc.UDC_Onboarding__c = isUdcOnboarding;
+
+        // Shipping address
+        if (String.isNotBlank(req.shipping_address_id)) { acc.ShippingAddressID__c = req.shipping_address_id; }
+        if (String.isNotBlank(req.shipping_address_1))  { acc.ShippingStreet       = req.shipping_address_1; }
+        if (String.isNotBlank(req.shipping_city))       { acc.ShippingCity         = req.shipping_city; }
+        if (String.isNotBlank(req.shipping_country))    { acc.ShippingCountry      = req.shipping_country; }
+        if (String.isNotBlank(req.shipping_region))     { acc.ShippingState        = req.shipping_region; }
+        if (String.isNotBlank(req.shipping_zip))        { acc.ShippingPostalCode   = req.shipping_zip; }
+
+        // Billing address
+        if (String.isNotBlank(req.billing_address_id)) { acc.BillingAddressID__c = req.billing_address_id; }
+        if (String.isNotBlank(req.billing_address_1))  { acc.BillingStreet       = req.billing_address_1; }
+        if (String.isNotBlank(req.billing_city))       { acc.BillingCity         = req.billing_city; }
+        if (String.isNotBlank(req.billing_country))    { acc.BillingCountry      = req.billing_country; }
+        if (String.isNotBlank(req.billing_region))     { acc.BillingState        = req.billing_region; }
+        if (String.isNotBlank(req.billing_zip))        { acc.BillingPostalCode   = req.billing_zip; }
+
+        // uLab_Acct_Number__c skipped in test context (same guard as applyAccountFields).
+        if (!Test.isRunningTest() && String.isNotBlank(req.org_id)) {
+            acc.uLab_Acct_Number__c = Decimal.valueOf(req.org_id);
         }
     }
 
@@ -522,8 +582,8 @@ global with sharing class UdcOnboardingService {
      * @param req  The deserialized OnboardingRequest
      * @return     Null if valid; validation error message if invalid
      */
-    private static String validateInput(OnboardingRequest req) {
-        if (String.isBlank(req.org_name)) {
+    private static String validateInput(OnboardingRequest req, String branch) {
+        if (String.isBlank(req.org_name) && branch != 'B') {
             return 'org_name is required.';
         }
         if (req.user == null || String.isBlank(req.user.last_name)) {
