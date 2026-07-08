@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>License_Number__c</fullName>
+    <description>License number for the organization, provided by the uDC onboarding portal.</description>
+    <externalId>false</externalId>
+    <label>License Number</label>
+    <length>500</length>
+    <required>false</required>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

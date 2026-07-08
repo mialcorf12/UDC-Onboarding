@@ -6,16 +6,17 @@
 		<name>ApexClass</name>
 	</types>
 	<types>
+		<members>Account.License_Number__c</members>
 		<members>Account.UDC_Onboarding__c</members>
 		<members>Contact.UDC_Onboarding__c</members>
-		<members>sfdc_accountuser_createdSuccess__e.Org_Id__c</members>
-		<members>sfdc_accountuser_createdSuccess__e.Org_Sfdc_Id__c</members>
-		<members>sfdc_accountuser_createdSuccess__e.User_Id__c</members>
-		<members>sfdc_accountuser_createdSuccess__e.User_Sfdc_Id__c</members>
-		<members>sfdc_accountuser_createdFailed__e.Org_Id__c</members>
-		<members>sfdc_accountuser_createdFailed__e.Org_Sfdc_Id__c</members>
-		<members>sfdc_accountuser_createdFailed__e.User_Id__c</members>
-		<members>sfdc_accountuser_createdFailed__e.User_Sfdc_Id__c</members>
+		<members>sfdc_accountuser_createdSuccess__e.uLab_Acct_Number__c</members>
+		<members>sfdc_accountuser_createdSuccess__e.AcctCaseSafeID__c</members>
+		<members>sfdc_accountuser_createdSuccess__e.Portal_User_ID__c</members>
+		<members>sfdc_accountuser_createdSuccess__e.ContactCaseSafeID__c</members>
+		<members>sfdc_accountuser_createdFailed__e.uLab_Acct_Number__c</members>
+		<members>sfdc_accountuser_createdFailed__e.AcctCaseSafeID__c</members>
+		<members>sfdc_accountuser_createdFailed__e.Portal_User_ID__c</members>
+		<members>sfdc_accountuser_createdFailed__e.ContactCaseSafeID__c</members>
 		<members>sfdc_accountuser_createdFailed__e.Status_Code__c</members>
 		<members>sfdc_accountuser_createdFailed__e.Error_Code__c</members>
 		<members>sfdc_accountuser_createdFailed__e.Error_Message__c</members>

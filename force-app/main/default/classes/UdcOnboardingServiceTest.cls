@@ -102,8 +102,11 @@ private class UdcOnboardingServiceTest {
             + '"billing_country": "US",'
             + '"billing_region": "TX",'
             + '"billing_zip": "75001",'
+            + '"license_number": "LIC-2026-001",'
             + '"signature_required": "false",'
             + '"out_of_service_area": "false",'
+            + '"tou_accepted_flag": "true",'
+            + '"tou_updated_ts": "2026-07-03",'
             + '"user": {'
             +   '"first_name": "John",'
             +   '"last_name": ' + (lastName != null ? '"' + lastName + '"' : 'null') + ','
@@ -118,8 +121,6 @@ private class UdcOnboardingServiceTest {
             +   '"user_type": "Customer Account Owner",'
             +   '"role": "Orthodontist",'
             +   '"user_id": "USR001",'
-            +   '"tou_accepted_flag": "true",'
-            +   '"tou_updated_ts": "2026-07-03",'
             +   '"activation_url": "https://portal.example.com/activate/USR001"'
             + '}'
             + '}';
@@ -240,10 +241,11 @@ private class UdcOnboardingServiceTest {
         System.assertNotEquals(null, resp.contactId,
             'Expected contactId to be populated on success');
 
-        // Verify Account persisted with UDC flag and new address ID fields
+        // Verify Account persisted with UDC flag, address ID fields, and tou/agreement fields
         List<Account> accounts = [
             SELECT Id, Name, UDC_Onboarding__c, uLab_Acct_Number__c,
-                   ShippingAddressID__c, BillingAddressID__c
+                   ShippingAddressID__c, BillingAddressID__c,
+                   Signed_Agreement__c, Latest_SW_Agreement_Signed__c
             FROM Account
             WHERE Id = :resp.accountId
         ];
@@ -260,12 +262,15 @@ private class UdcOnboardingServiceTest {
             'Expected ShippingAddressID__c to be populated from shipping_address_id');
         System.assertEquals('BLL00001', accounts[0].BillingAddressID__c,
             'Expected BillingAddressID__c to be populated from billing_address_id');
+        System.assertEquals(true, accounts[0].Signed_Agreement__c,
+            'Expected Signed_Agreement__c = true on Account when tou_accepted_flag = true');
+        System.assertEquals(Date.newInstance(2026, 7, 3), accounts[0].Latest_SW_Agreement_Signed__c,
+            'Expected Latest_SW_Agreement_Signed__c to be populated from tou_updated_ts');
 
         // Verify Contact persisted with UDC flag and new fields linked to Account
         List<Contact> contacts = [
             SELECT Id, AccountId, UDC_Onboarding__c, Portal_User_ID__c,
-                   Mailing_Address_ID__c, Activation_URL__c,
-                   uLab_Systems_Account_Agreement_Signed__c, Sales_Informed_Agreement_Signed__c
+                   Mailing_Address_ID__c, Activation_URL__c
             FROM Contact
             WHERE Id = :resp.contactId
         ];
@@ -277,10 +282,6 @@ private class UdcOnboardingServiceTest {
             'Expected Contact to be linked to the created Account');
         System.assertEquals('USR001', contacts[0].Portal_User_ID__c,
             'Expected Portal_User_ID__c to be populated from user_id');
-        System.assertEquals(true, contacts[0].uLab_Systems_Account_Agreement_Signed__c,
-            'Expected uLab_Systems_Account_Agreement_Signed__c = true when tou_accepted_flag = true');
-        System.assertEquals(Date.newInstance(2026, 7, 3), contacts[0].Sales_Informed_Agreement_Signed__c,
-            'Expected Sales_Informed_Agreement_Signed__c to be populated from tou_updated_ts');
         System.assertEquals('MAL00001', contacts[0].Mailing_Address_ID__c,
             'Expected Mailing_Address_ID__c to be populated from mailing_address_id');
         System.assertEquals('https://portal.example.com/activate/USR001', contacts[0].Activation_URL__c,
@@ -501,7 +502,8 @@ private class UdcOnboardingServiceTest {
         // Verify the Account was UPDATED (not a new one inserted) — only 1 Account with this Id
         List<Account> accounts = [
             SELECT Id, Name, UDC_Onboarding__c, uLab_Acct_Number__c,
-                   ShippingAddressID__c, BillingAddressID__c
+                   ShippingAddressID__c, BillingAddressID__c,
+                   Signed_Agreement__c, Latest_SW_Agreement_Signed__c
             FROM Account
             WHERE Id = :existing.Id
         ];
@@ -518,6 +520,10 @@ private class UdcOnboardingServiceTest {
             'Expected ShippingAddressID__c to be populated from shipping_address_id on Account update');
         System.assertEquals('BLL00001', accounts[0].BillingAddressID__c,
             'Expected BillingAddressID__c to be populated from billing_address_id on Account update');
+        System.assertEquals(true, accounts[0].Signed_Agreement__c,
+            'Expected Signed_Agreement__c = true on Account when tou_accepted_flag = true');
+        System.assertEquals(Date.newInstance(2026, 7, 3), accounts[0].Latest_SW_Agreement_Signed__c,
+            'Expected Latest_SW_Agreement_Signed__c to be populated from tou_updated_ts');
 
         // Verify no NEW Account was created (total Accounts in test = 1)
         List<Account> allAccounts = [SELECT Id FROM Account];
@@ -527,8 +533,7 @@ private class UdcOnboardingServiceTest {
         // Verify Contact is linked to the pre-existing Account with new fields populated
         List<Contact> contacts = [
             SELECT Id, AccountId, UDC_Onboarding__c, LastName, Portal_User_ID__c,
-                   Mailing_Address_ID__c, Activation_URL__c,
-                   uLab_Systems_Account_Agreement_Signed__c, Sales_Informed_Agreement_Signed__c
+                   Mailing_Address_ID__c, Activation_URL__c
             FROM Contact
             WHERE Id = :resp.contactId
         ];
@@ -542,10 +547,6 @@ private class UdcOnboardingServiceTest {
             'Expected Contact LastName to match payload user.last_name');
         System.assertEquals('USR001', contacts[0].Portal_User_ID__c,
             'Expected Portal_User_ID__c to be populated from user_id');
-        System.assertEquals(true, contacts[0].uLab_Systems_Account_Agreement_Signed__c,
-            'Expected uLab_Systems_Account_Agreement_Signed__c = true when tou_accepted_flag = true');
-        System.assertEquals(Date.newInstance(2026, 7, 3), contacts[0].Sales_Informed_Agreement_Signed__c,
-            'Expected Sales_Informed_Agreement_Signed__c to be populated from tou_updated_ts');
         System.assertEquals('MAL00001', contacts[0].Mailing_Address_ID__c,
             'Expected Mailing_Address_ID__c to be populated from mailing_address_id');
         System.assertEquals('https://portal.example.com/activate/USR001', contacts[0].Activation_URL__c,
@@ -687,14 +688,14 @@ private class UdcOnboardingServiceTest {
             'Expected exactly 1 Sfdc_Accountuser_CreatedSuccess__e published on Branch A success');
 
         Sfdc_Accountuser_CreatedSuccess__e evt = successEvents[0];
-        System.assertEquals(String.valueOf(resp.accountId), evt.Org_Sfdc_Id__c,
-            'Success event Org_Sfdc_Id__c must equal the created Account Id');
-        System.assertEquals(String.valueOf(resp.contactId), evt.User_Sfdc_Id__c,
-            'Success event User_Sfdc_Id__c must equal the created Contact Id');
-        System.assertEquals('12345', evt.Org_Id__c,
-            'Success event Org_Id__c must equal org_id from the payload');
-        System.assertEquals('USR001', evt.User_Id__c,
-            'Success event User_Id__c must equal user_id from the payload');
+        System.assertEquals(String.valueOf(resp.accountId), evt.AcctCaseSafeID__c,
+            'Success event AcctCaseSafeID__c must equal the created Account Id');
+        System.assertEquals(String.valueOf(resp.contactId), evt.ContactCaseSafeID__c,
+            'Success event ContactCaseSafeID__c must equal the created Contact Id');
+        System.assertEquals('12345', evt.uLab_Acct_Number__c,
+            'Success event uLab_Acct_Number__c must equal org_id from the payload');
+        System.assertEquals('USR001', evt.Portal_User_ID__c,
+            'Success event Portal_User_ID__c must equal user_id from the payload');
 
         // Then — 0 failed events
         List<Sfdc_Accountuser_CreatedFailed__e> failedEvents = getPublishedFailedEvents();
@@ -753,14 +754,14 @@ private class UdcOnboardingServiceTest {
             'Expected exactly 1 Sfdc_Accountuser_CreatedSuccess__e published on Branch B success');
 
         Sfdc_Accountuser_CreatedSuccess__e evt = successEvents[0];
-        System.assertEquals(String.valueOf(existing.Id), evt.Org_Sfdc_Id__c,
-            'Success event Org_Sfdc_Id__c must equal the existing Account Id');
-        System.assertEquals(String.valueOf(resp.contactId), evt.User_Sfdc_Id__c,
-            'Success event User_Sfdc_Id__c must equal the created Contact Id');
-        System.assertEquals('12345', evt.Org_Id__c,
-            'Success event Org_Id__c must equal org_id from the payload');
-        System.assertEquals('USR001', evt.User_Id__c,
-            'Success event User_Id__c must equal user_id from the payload');
+        System.assertEquals(String.valueOf(existing.Id), evt.AcctCaseSafeID__c,
+            'Success event AcctCaseSafeID__c must equal the existing Account Id');
+        System.assertEquals(String.valueOf(resp.contactId), evt.ContactCaseSafeID__c,
+            'Success event ContactCaseSafeID__c must equal the created Contact Id');
+        System.assertEquals('12345', evt.uLab_Acct_Number__c,
+            'Success event uLab_Acct_Number__c must equal org_id from the payload');
+        System.assertEquals('USR001', evt.Portal_User_ID__c,
+            'Success event Portal_User_ID__c must equal user_id from the payload');
 
         // Then — 0 failed events
         List<Sfdc_Accountuser_CreatedFailed__e> failedEvents = getPublishedFailedEvents();
@@ -807,6 +808,7 @@ private class UdcOnboardingServiceTest {
             + '"billing_zip": "75001",'
             + '"signature_required": "false",'
             + '"out_of_service_area": "false",'
+            + '"tou_accepted_flag": "false",'
             + '"user": {'
             +   '"first_name": "John",'
             +   '"last_name": "Smith",'
@@ -814,8 +816,7 @@ private class UdcOnboardingServiceTest {
             +   '"phone": "2145550101",'
             +   '"user_id": "USR001",'
             +   '"user_type": "Customer Account Owner",'
-            +   '"role": "Orthodontist",'
-            +   '"tou_accepted_flag": "false"'
+            +   '"role": "Orthodontist"'
             + '}'
             + '}';
         setupRestContext(payloadWithOrgId);
@@ -839,14 +840,14 @@ private class UdcOnboardingServiceTest {
             'Expected exactly 1 Sfdc_Accountuser_CreatedFailed__e published on 400 validation error');
 
         Sfdc_Accountuser_CreatedFailed__e evt = failedEvents[0];
-        System.assertEquals('99999', evt.Org_Id__c,
-            'Failed event Org_Id__c must carry the org_id from the payload');
-        System.assertEquals(null, evt.Org_Sfdc_Id__c,
-            'Failed event Org_Sfdc_Id__c must be null — no Account committed');
-        System.assertEquals('USR001', evt.User_Id__c,
-            'Failed event User_Id__c must carry user_id from the payload');
-        System.assertEquals(null, evt.User_Sfdc_Id__c,
-            'Failed event User_Sfdc_Id__c must be null — no Contact committed');
+        System.assertEquals('99999', evt.uLab_Acct_Number__c,
+            'Failed event uLab_Acct_Number__c must carry the org_id from the payload');
+        System.assertEquals(null, evt.AcctCaseSafeID__c,
+            'Failed event AcctCaseSafeID__c must be null — no Account committed');
+        System.assertEquals('USR001', evt.Portal_User_ID__c,
+            'Failed event Portal_User_ID__c must carry user_id from the payload');
+        System.assertEquals(null, evt.ContactCaseSafeID__c,
+            'Failed event ContactCaseSafeID__c must be null — no Contact committed');
         System.assertEquals(RestContext.response.statusCode, Integer.valueOf(evt.Status_Code__c),
             'Failed event Status_Code__c must equal the HTTP status returned to the caller');
         System.assertEquals(resp.errorCode, evt.Error_Code__c,
@@ -906,6 +907,7 @@ private class UdcOnboardingServiceTest {
             + '"billing_zip": "75001",'
             + '"signature_required": "false",'
             + '"out_of_service_area": "false",'
+            + '"tou_accepted_flag": "false",'
             + '"user": {'
             +   '"first_name": "John",'
             +   '"last_name": "' + longLastName + '",'
@@ -913,8 +915,7 @@ private class UdcOnboardingServiceTest {
             +   '"phone": "2145550101",'
             +   '"user_id": "USR001",'
             +   '"user_type": "Customer Account Owner",'
-            +   '"role": "Orthodontist",'
-            +   '"tou_accepted_flag": "false"'
+            +   '"role": "Orthodontist"'
             + '}'
             + '}';
         setupRestContext(payloadLongLastName);
@@ -941,15 +942,15 @@ private class UdcOnboardingServiceTest {
             'Expected exactly 1 Sfdc_Accountuser_CreatedFailed__e published when Contact DML fails');
 
         Sfdc_Accountuser_CreatedFailed__e evt = failedEvents[0];
-        System.assertEquals('12345', evt.Org_Id__c,
-            'Failed event Org_Id__c must carry the org_id from the payload');
-        // Account was inserted successfully before Contact DML failed → Org_Sfdc_Id__c must be populated
-        System.assertNotEquals(null, evt.Org_Sfdc_Id__c,
-            'Failed event Org_Sfdc_Id__c must carry the Account Id — Account was committed before Contact failed');
-        System.assertEquals('USR001', evt.User_Id__c,
-            'Failed event User_Id__c must carry the user_id from the payload');
-        System.assertEquals(null, evt.User_Sfdc_Id__c,
-            'Failed event User_Sfdc_Id__c must be null — Contact was never committed');
+        System.assertEquals('12345', evt.uLab_Acct_Number__c,
+            'Failed event uLab_Acct_Number__c must carry the org_id from the payload');
+        // Account was inserted successfully before Contact DML failed → AcctCaseSafeID__c must be populated
+        System.assertNotEquals(null, evt.AcctCaseSafeID__c,
+            'Failed event AcctCaseSafeID__c must carry the Account Id — Account was committed before Contact failed');
+        System.assertEquals('USR001', evt.Portal_User_ID__c,
+            'Failed event Portal_User_ID__c must carry the user_id from the payload');
+        System.assertEquals(null, evt.ContactCaseSafeID__c,
+            'Failed event ContactCaseSafeID__c must be null — Contact was never committed');
         System.assertEquals(RestContext.response.statusCode, Integer.valueOf(evt.Status_Code__c),
             'Failed event Status_Code__c must equal the HTTP status returned to the caller');
         System.assertEquals(resp.errorCode, evt.Error_Code__c,
@@ -1014,13 +1015,13 @@ private class UdcOnboardingServiceTest {
         System.assertEquals(1, failedEvents.size(),
             'Expected exactly 1 Sfdc_Accountuser_CreatedFailed__e published despite DML rollback');
 
-        // Account was inserted before the forced Contact failure — Org_Sfdc_Id__c must be populated
+        // Account was inserted before the forced Contact failure — AcctCaseSafeID__c must be populated
         // even though the Account was rolled back afterwards (event captured before rollback)
         Sfdc_Accountuser_CreatedFailed__e evt = failedEvents[0];
-        System.assertNotEquals(null, evt.Org_Sfdc_Id__c,
-            'Failed event Org_Sfdc_Id__c must carry the Account Id — it existed at publish time before rollback');
-        System.assertEquals(null, evt.User_Sfdc_Id__c,
-            'Failed event User_Sfdc_Id__c must be null — Contact was never committed');
+        System.assertNotEquals(null, evt.AcctCaseSafeID__c,
+            'Failed event AcctCaseSafeID__c must carry the Account Id — it existed at publish time before rollback');
+        System.assertEquals(null, evt.ContactCaseSafeID__c,
+            'Failed event ContactCaseSafeID__c must be null — Contact was never committed');
         System.assertEquals(RestContext.response.statusCode, Integer.valueOf(evt.Status_Code__c),
             'Failed event Status_Code__c must equal the HTTP status returned to the caller');
         System.assertEquals(resp.errorCode, evt.Error_Code__c,
@@ -1122,14 +1123,14 @@ private class UdcOnboardingServiceTest {
             'Expected exactly 1 Sfdc_Accountuser_CreatedFailed__e published on 404');
 
         Sfdc_Accountuser_CreatedFailed__e evt = failedEvents[0];
-        System.assertEquals('12345', evt.Org_Id__c,
-            'Failed event Org_Id__c must carry org_id from the payload');
-        System.assertEquals(null, evt.Org_Sfdc_Id__c,
-            'Failed event Org_Sfdc_Id__c must be null — no Account was committed');
-        System.assertEquals(null, evt.User_Sfdc_Id__c,
-            'Failed event User_Sfdc_Id__c must be null — no Contact was committed');
-        System.assertEquals('USR001', evt.User_Id__c,
-            'Failed event User_Id__c must carry user_id from the payload');
+        System.assertEquals('12345', evt.uLab_Acct_Number__c,
+            'Failed event uLab_Acct_Number__c must carry org_id from the payload');
+        System.assertEquals(null, evt.AcctCaseSafeID__c,
+            'Failed event AcctCaseSafeID__c must be null — no Account was committed');
+        System.assertEquals(null, evt.ContactCaseSafeID__c,
+            'Failed event ContactCaseSafeID__c must be null — no Contact was committed');
+        System.assertEquals('USR001', evt.Portal_User_ID__c,
+            'Failed event Portal_User_ID__c must carry user_id from the payload');
         System.assertEquals(RestContext.response.statusCode, Integer.valueOf(evt.Status_Code__c),
             'Failed event Status_Code__c must equal the HTTP status returned to the caller');
         System.assertEquals(resp.errorCode, evt.Error_Code__c,
@@ -1180,6 +1181,8 @@ private class UdcOnboardingServiceTest {
             + '"billing_zip": "75001",'
             + '"signature_required": "false",'
             + '"out_of_service_area": "false",'
+            + '"tou_accepted_flag": "true",'
+            + '"tou_updated_ts": "2026-07-03",'
             + '"user": {'
             +   '"first_name": "John",'
             +   '"last_name": "' + VALID_LAST_NAME + '",'
@@ -1194,8 +1197,6 @@ private class UdcOnboardingServiceTest {
             +   '"user_type": "Customer Account Owner",'
             +   '"role": "Orthodontist",'
             +   '"user_id": "USR001",'
-            +   '"tou_accepted_flag": "true",'
-            +   '"tou_updated_ts": "2026-07-03",'
             +   '"activation_url": "https://portal.example.com/activate/USR001"'
             + '}'
             + '}';

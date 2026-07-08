@@ -74,8 +74,11 @@ global with sharing class UdcOnboardingService {
         public String billing_country;
         public String billing_region;
         public String billing_zip;
+        public String license_number;
         public String signature_required;
         public String out_of_service_area;
+        public String tou_accepted_flag;
+        public String tou_updated_ts;
         public ContactRequest user;
     }
 
@@ -96,8 +99,6 @@ global with sharing class UdcOnboardingService {
         public String mailing_country;
         public String mailing_state;
         public String mailing_zipcode;
-        public String tou_accepted_flag;
-        public String tou_updated_ts;
         public String activation_url;
     }
 
@@ -387,6 +388,13 @@ global with sharing class UdcOnboardingService {
         acc.BillingCountry      = req.billing_country;
         acc.BillingState        = req.billing_region;
         acc.BillingPostalCode   = req.billing_zip;
+
+        acc.License_Number__c = req.license_number;
+        acc.Signed_Agreement__c = (req.tou_accepted_flag == 'true');
+        acc.Latest_SW_Agreement_Signed__c = String.isBlank(req.tou_updated_ts)
+            ? null
+            : Date.valueOf(req.tou_updated_ts);
+
         // uLab_Acct_Number__c is skipped in test context: the "NFA Create" workflow
         // fires when this field is set and references a cross-reference record that is
         // inaccessible in SeeAllData=false test isolation. Production behavior is unchanged.
@@ -435,6 +443,12 @@ global with sharing class UdcOnboardingService {
         if (String.isNotBlank(req.billing_region))     { acc.BillingState        = req.billing_region; }
         if (String.isNotBlank(req.billing_zip))        { acc.BillingPostalCode   = req.billing_zip; }
 
+        if (String.isNotBlank(req.license_number)) { acc.License_Number__c = req.license_number; }
+        if (String.isNotBlank(req.tou_accepted_flag)) { acc.Signed_Agreement__c = (req.tou_accepted_flag == 'true'); }
+        if (String.isNotBlank(req.tou_updated_ts)) {
+            acc.Latest_SW_Agreement_Signed__c = Date.valueOf(req.tou_updated_ts);
+        }
+
         // uLab_Acct_Number__c skipped in test context (same guard as applyAccountFields).
         if (!Test.isRunningTest() && String.isNotBlank(req.org_id)) {
             acc.uLab_Acct_Number__c = Decimal.valueOf(req.org_id);
@@ -474,10 +488,6 @@ global with sharing class UdcOnboardingService {
 
         con.Contact_Role__c   = req.user.role;
         con.Portal_User_ID__c = req.user.user_id;
-        con.uLab_Systems_Account_Agreement_Signed__c = (req.user.tou_accepted_flag == 'true');
-        con.Sales_Informed_Agreement_Signed__c       = String.isBlank(req.user.tou_updated_ts)
-            ? null
-            : Date.valueOf(req.user.tou_updated_ts);
         con.Activation_URL__c = req.user.activation_url;
         con.UDC_Onboarding__c = isUdcOnboarding;
 
@@ -616,10 +626,10 @@ global with sharing class UdcOnboardingService {
     private static void publishSuccessEvent(Id accountId, String orgId, Id contactId, String userId) {
         try {
             Sfdc_Accountuser_CreatedSuccess__e evt = new Sfdc_Accountuser_CreatedSuccess__e();
-            evt.Org_Sfdc_Id__c  = String.valueOf(accountId);
-            evt.Org_Id__c       = orgId;
-            evt.User_Sfdc_Id__c = String.valueOf(contactId);
-            evt.User_Id__c      = userId;
+            evt.AcctCaseSafeID__c    = String.valueOf(accountId);
+            evt.uLab_Acct_Number__c  = orgId;
+            evt.ContactCaseSafeID__c = String.valueOf(contactId);
+            evt.Portal_User_ID__c    = userId;
             EventBus.publish(evt);
             // Capture for test assertions — EventBus.TestBroker.getPublishedMessages()
             // is not available in this org; @TestVisible capture lists are the alternative.
@@ -656,15 +666,15 @@ global with sharing class UdcOnboardingService {
     ) {
         try {
             Sfdc_Accountuser_CreatedFailed__e evt = new Sfdc_Accountuser_CreatedFailed__e();
-            evt.Org_Sfdc_Id__c   = accountId != null ? String.valueOf(accountId) : null;
-            evt.Org_Id__c        = orgId;
-            evt.User_Id__c       = userId;
-            evt.Status_Code__c   = statusCode;
-            evt.Error_Code__c    = errorCode;
-            evt.Error_Message__c = (errorMessage != null && errorMessage.length() > 255)
+            evt.AcctCaseSafeID__c   = accountId != null ? String.valueOf(accountId) : null;
+            evt.uLab_Acct_Number__c = orgId;
+            evt.Portal_User_ID__c   = userId;
+            evt.Status_Code__c      = statusCode;
+            evt.Error_Code__c       = errorCode;
+            evt.Error_Message__c    = (errorMessage != null && errorMessage.length() > 255)
                 ? errorMessage.substring(0, 255)
                 : errorMessage;
-            // User_Sfdc_Id__c remains null — Contact was never committed on failure path
+            // ContactCaseSafeID__c remains null — Contact was never committed on failure path
             EventBus.publish(evt);
             // Capture for test assertions — @TestVisible capture list alternative
             // to EventBus.TestBroker.getPublishedMessages() (not available in this org).
