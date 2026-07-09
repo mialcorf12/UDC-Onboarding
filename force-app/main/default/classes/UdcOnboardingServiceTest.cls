@@ -586,6 +586,22 @@ private class UdcOnboardingServiceTest {
             'Expected errorCode DUPLICATE_RECORD for DUPLICATE_VALUE StatusCode');
         System.assert(resp.message.contains('Duplicate record detected'),
             'Expected message to indicate duplicate detection');
+
+        List<Sfdc_Accountuser_CreatedFailed__e> failedEvents = getPublishedFailedEvents();
+        System.assertEquals(1, failedEvents.size(),
+            'Expected exactly 1 Sfdc_Accountuser_CreatedFailed__e published when Account insert fails as duplicate');
+
+        Sfdc_Accountuser_CreatedFailed__e evt = failedEvents[0];
+        System.assertEquals(null, evt.AcctCaseSafeID__c,
+            'Failed event AcctCaseSafeID__c must be null — Account was never committed');
+        System.assertEquals('12345', evt.uLab_Acct_Number__c,
+            'Failed event uLab_Acct_Number__c must carry the org_id from the payload');
+        System.assertEquals('USR001', evt.Portal_User_ID__c,
+            'Failed event Portal_User_ID__c must carry the user_id from the payload');
+        System.assertEquals(RestContext.response.statusCode, Integer.valueOf(evt.Status_Code__c),
+            'Failed event Status_Code__c must equal the HTTP status returned to the caller');
+        System.assertEquals(resp.errorCode, evt.Error_Code__c,
+            'Failed event Error_Code__c must equal the errorCode returned to the caller');
     }
 
     // =========================================================================

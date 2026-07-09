@@ -260,7 +260,9 @@ global with sharing class UdcOnboardingService {
             insert accToInsert;
         } catch (DmlException e) {
             // Account insert failed — no records written; no rollback needed.
-            return buildDmlErrorResponse(e, res, null);
+            OnboardingResponse errResp = buildDmlErrorResponse(e, res, null);
+            publishFailedEvent(null, orgId, userId, res.statusCode, errResp.errorCode, errResp.message);
+            return errResp;
         }
 
         // Build and insert Contact linked to the new Account
@@ -337,7 +339,9 @@ global with sharing class UdcOnboardingService {
             update accToUpdate;
         } catch (DmlException e) {
             // Account update failed — buildDmlErrorResponse rolls back sp before returning.
-            return buildDmlErrorResponse(e, res, sp);
+            OnboardingResponse errResp = buildDmlErrorResponse(e, res, sp);
+            publishFailedEvent(accToUpdate.Id, orgId, userId, res.statusCode, errResp.errorCode, errResp.message);
+            return errResp;
         }
 
         // Build and insert Contact linked to the existing Account

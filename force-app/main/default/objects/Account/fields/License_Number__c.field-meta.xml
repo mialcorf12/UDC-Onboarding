@@ -4,7 +4,7 @@
     <description>License number for the organization, provided by the uDC onboarding portal.</description>
     <externalId>false</externalId>
     <label>License Number</label>
-    <length>500</length>
+    <length>255</length>
     <required>false</required>
     <type>Text</type>
     <unique>false</unique>
