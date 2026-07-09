@@ -153,63 +153,80 @@ global with sharing class UdcOnboardingService {
     @HttpPost
     global static OnboardingResponse handlePost() {
         RestResponse res = RestContext.response;
+        String orgId;
+        String userId;
 
-        // Step 1: Deserialize the JSON request body
-        OnboardingRequest req = (OnboardingRequest) JSON.deserialize(
-            RestContext.request.requestBody.toString(),
-            OnboardingRequest.class
-        );
+        try {
+            // Step 1: Deserialize the JSON request body
+            OnboardingRequest req = (OnboardingRequest) JSON.deserialize(
+                RestContext.request.requestBody.toString(),
+                OnboardingRequest.class
+            );
+            orgId  = req.org_id;
+            userId = (req.user != null) ? req.user.user_id : null;
 
-        // Step 2: Resolve RecordType IDs dynamically (portable across orgs)
-        Id accountRecordTypeId = Schema.SObjectType.Account
-            .getRecordTypeInfosByDeveloperName()
-            .get('Commercial')
-            .getRecordTypeId();
+            // Step 2: Resolve RecordType IDs dynamically (portable across orgs)
+            Id accountRecordTypeId = Schema.SObjectType.Account
+                .getRecordTypeInfosByDeveloperName()
+                .get('Commercial')
+                .getRecordTypeId();
 
-        Id contactRecordTypeId = Schema.SObjectType.Contact
-            .getRecordTypeInfosByDeveloperName()
-            .get('Commercial')
-            .getRecordTypeId();
+            Id contactRecordTypeId = Schema.SObjectType.Contact
+                .getRecordTypeInfosByDeveloperName()
+                .get('Commercial')
+                .getRecordTypeId();
 
-        // Compute the UDC onboarding flag once — used on both Account and Contact
-        Boolean isUdcOnboarding = (req.onboard_type == 'udesign.cloud');
+            // Compute the UDC onboarding flag once — used on both Account and Contact
+            Boolean isUdcOnboarding = (req.onboard_type == 'udesign.cloud');
 
-        // =====================================================================
-        // BRANCH DECISION: org_sfdc_id present → update existing Account
-        //                  org_sfdc_id blank/null → create new Account
-        // =====================================================================
-        if (String.isNotBlank(req.org_sfdc_id)) {
-            // Step 3: Validate inputs before any DML — yields HTTP 400 on failure
-            String validationError = validateInput(req, 'B');
-            if (validationError != null) {
-                res.statusCode = 400;
-                OnboardingResponse errResp = new OnboardingResponse();
-                errResp.success   = false;
-                errResp.errorCode = 'INVALID_INPUT';
-                errResp.message   = 'Validation failed: ' + validationError;
-                // REQ-PE-2: publish FAILED event on 400 — no Account exists yet; accountId=null
-                publishFailedEvent(null, req.org_id, (req.user != null) ? req.user.user_id : null,
-                    res.statusCode, errResp.errorCode, errResp.message);
-                return errResp;
+            // =====================================================================
+            // BRANCH DECISION: org_sfdc_id present → update existing Account
+            //                  org_sfdc_id blank/null → create new Account
+            // =====================================================================
+            if (String.isNotBlank(req.org_sfdc_id)) {
+                // Step 3: Validate inputs before any DML — yields HTTP 400 on failure
+                String validationError = validateInput(req, 'B');
+                if (validationError != null) {
+                    res.statusCode = 400;
+                    OnboardingResponse errResp = new OnboardingResponse();
+                    errResp.success   = false;
+                    errResp.errorCode = 'INVALID_INPUT';
+                    errResp.message   = 'Validation failed: ' + validationError;
+                    // REQ-PE-2: publish FAILED event on 400 — no Account exists yet; accountId=null
+                    publishFailedEvent(null, orgId, userId,
+                        res.statusCode, errResp.errorCode, errResp.message);
+                    return errResp;
+                }
+
+                return handleExistingAccount(req, res, contactRecordTypeId, isUdcOnboarding);
+            } else {
+                // Step 3: Validate inputs before any DML — yields HTTP 400 on failure
+                String validationError = validateInput(req, 'A');
+                if (validationError != null) {
+                    res.statusCode = 400;
+                    OnboardingResponse errResp = new OnboardingResponse();
+                    errResp.success   = false;
+                    errResp.errorCode = 'INVALID_INPUT';
+                    errResp.message   = 'Validation failed: ' + validationError;
+                    // REQ-PE-2: publish FAILED event on 400 — no Account exists yet; accountId=null
+                    publishFailedEvent(null, orgId, userId,
+                        res.statusCode, errResp.errorCode, errResp.message);
+                    return errResp;
+                }
+
+                return handleNewAccount(req, res, accountRecordTypeId, contactRecordTypeId, isUdcOnboarding);
             }
-
-            return handleExistingAccount(req, res, contactRecordTypeId, isUdcOnboarding);
-        } else {
-            // Step 3: Validate inputs before any DML — yields HTTP 400 on failure
-            String validationError = validateInput(req, 'A');
-            if (validationError != null) {
-                res.statusCode = 400;
-                OnboardingResponse errResp = new OnboardingResponse();
-                errResp.success   = false;
-                errResp.errorCode = 'INVALID_INPUT';
-                errResp.message   = 'Validation failed: ' + validationError;
-                // REQ-PE-2: publish FAILED event on 400 — no Account exists yet; accountId=null
-                publishFailedEvent(null, req.org_id, (req.user != null) ? req.user.user_id : null,
-                    res.statusCode, errResp.errorCode, errResp.message);
-                return errResp;
-            }
-
-            return handleNewAccount(req, res, accountRecordTypeId, contactRecordTypeId, isUdcOnboarding);
+        } catch (Exception e) {
+            // Safety net for unexpected failures before/outside the controlled DML paths
+            // (e.g. malformed JSON payload, missing RecordType) — ensures the caller
+            // always gets the OnboardingResponse contract and a failed event is recorded.
+            res.statusCode = 500;
+            OnboardingResponse errResp = new OnboardingResponse();
+            errResp.success   = false;
+            errResp.errorCode = 'INTERNAL_ERROR';
+            errResp.message   = 'Unexpected error: ' + e.getMessage();
+            publishFailedEvent(null, orgId, userId, res.statusCode, errResp.errorCode, errResp.message);
+            return errResp;
         }
     }
 

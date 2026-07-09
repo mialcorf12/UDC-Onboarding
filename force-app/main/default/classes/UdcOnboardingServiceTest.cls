@@ -605,6 +605,49 @@ private class UdcOnboardingServiceTest {
     }
 
     // =========================================================================
+    // Scenario — handlePost safety net: malformed JSON payload → HTTP 500
+    // =========================================================================
+
+    /**
+     * GIVEN a request body that is not valid JSON (fails JSON.deserialize)
+     * WHEN POST is received
+     * THEN statusCode == 500, errorCode == INTERNAL_ERROR, and a
+     * Sfdc_Accountuser_CreatedFailed__e is still published with accountId/orgId/userId
+     * all null since the payload could never be parsed.
+     */
+    @isTest
+    static void testMalformedPayloadReturns500AndPublishesFailedEvent() {
+        setupRestContext('{ this is not valid json');
+
+        Test.startTest();
+        UdcOnboardingService.OnboardingResponse resp = UdcOnboardingService.handlePost();
+        Test.stopTest();
+
+        System.assertEquals(500, RestContext.response.statusCode,
+            'Expected HTTP 500 for an unparseable request body');
+        System.assertEquals(false, resp.success,
+            'Expected success=false on internal error');
+        System.assertEquals('INTERNAL_ERROR', resp.errorCode,
+            'Expected errorCode INTERNAL_ERROR for the handlePost safety-net catch');
+
+        List<Sfdc_Accountuser_CreatedFailed__e> failedEvents = getPublishedFailedEvents();
+        System.assertEquals(1, failedEvents.size(),
+            'Expected exactly 1 Sfdc_Accountuser_CreatedFailed__e published on malformed payload');
+
+        Sfdc_Accountuser_CreatedFailed__e evt = failedEvents[0];
+        System.assertEquals(null, evt.AcctCaseSafeID__c,
+            'Failed event AcctCaseSafeID__c must be null — no Account context available');
+        System.assertEquals(null, evt.uLab_Acct_Number__c,
+            'Failed event uLab_Acct_Number__c must be null — request body was never parsed');
+        System.assertEquals(null, evt.Portal_User_ID__c,
+            'Failed event Portal_User_ID__c must be null — request body was never parsed');
+        System.assertEquals(RestContext.response.statusCode, Integer.valueOf(evt.Status_Code__c),
+            'Failed event Status_Code__c must equal the HTTP status returned to the caller');
+        System.assertEquals(resp.errorCode, evt.Error_Code__c,
+            'Failed event Error_Code__c must equal the errorCode returned to the caller');
+    }
+
+    // =========================================================================
     // Scenario 11 — buildDmlErrorResponse: FIELD_CUSTOM_VALIDATION_EXCEPTION → HTTP 422
     // =========================================================================
 
