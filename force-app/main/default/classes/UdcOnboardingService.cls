@@ -91,6 +91,7 @@ global with sharing class UdcOnboardingService {
         public String last_name;
         public String email;
         public String phone;
+        public String cell_phone;
         public String user_type;
         public String role;
         public String mailing_address_id;
@@ -269,9 +270,10 @@ global with sharing class UdcOnboardingService {
         );
         Account accToInsert = (Account) accDecision.getRecords()[0];
         accToInsert.UDC_Onboarding__c    = isUdcOnboarding;
-        accToInsert.uLab_Acct_Number__c  = acc.uLab_Acct_Number__c;
-        accToInsert.ShippingAddressID__c = acc.ShippingAddressID__c;
-        accToInsert.BillingAddressID__c  = acc.BillingAddressID__c;
+        // uLab_Acct_Number__c skipped in test context (same guard as applyAccountFields).
+        if (!Test.isRunningTest()) {
+            accToInsert.uLab_Acct_Number__c = acc.uLab_Acct_Number__c;
+        }
 
         try {
             insert accToInsert;
@@ -310,7 +312,7 @@ global with sharing class UdcOnboardingService {
         List<Account> existing = [
             SELECT Id, RecordTypeId, Name, Type, Account_Status__c, Phone,
                    Is_Parent__c, Signature_Required__c, Out_of_Service_Area__c,
-                   UDC_Onboarding__c,
+                   UDC_Onboarding__c, Account_Email__c, Account_POC_Firstname__c,
                    ShippingAddressID__c, ShippingStreet, ShippingCity, ShippingCountry, ShippingState, ShippingPostalCode,
                    BillingAddressID__c, BillingStreet, BillingCity, BillingCountry, BillingState, BillingPostalCode
             FROM Account
@@ -345,12 +347,10 @@ global with sharing class UdcOnboardingService {
         );
         Account accToUpdate = (Account) accDecision.getRecords()[0];
         accToUpdate.UDC_Onboarding__c    = isUdcOnboarding;
-        // uLab_Acct_Number__c skipped in test context (same guard as applyAccountFields).
+        // uLab_Acct_Number__c skipped in test context (same guard as applyAccountFieldsPartial).
         if (!Test.isRunningTest()) {
             accToUpdate.uLab_Acct_Number__c = acc.uLab_Acct_Number__c;
         }
-        accToUpdate.ShippingAddressID__c = acc.ShippingAddressID__c;
-        accToUpdate.BillingAddressID__c  = acc.BillingAddressID__c;
 
         try {
             update accToUpdate;
@@ -416,6 +416,13 @@ global with sharing class UdcOnboardingService {
             ? null
             : Date.valueOf(req.tou_updated_ts);
 
+        // Additional fields requested in UDC-4114
+        acc.Cloud_Customer__c = true;
+        acc.Cloud_Assignment__c = Date.today();
+        acc.Date_Added_to_Portal__c = Date.today();
+        acc.Account_Email__c = req.user.email;
+        acc.Account_POC_Firstname__c = req.user.first_name;
+
         // uLab_Acct_Number__c is skipped in test context: the "NFA Create" workflow
         // fires when this field is set and references a cross-reference record that is
         // inaccessible in SeeAllData=false test isolation. Production behavior is unchanged.
@@ -470,6 +477,17 @@ global with sharing class UdcOnboardingService {
             acc.Latest_SW_Agreement_Signed__c = Date.valueOf(req.tou_updated_ts);
         }
 
+        // Additional fields requested in UDC-4114
+        acc.Cloud_Customer__c = true;
+        acc.Cloud_Assignment__c = Date.today();
+        acc.Date_Added_to_Portal__c = Date.today();
+        if (String.isBlank(acc.Account_Email__c)) {
+            acc.Account_Email__c = req.user.email;
+        }
+        if (String.isBlank(acc.Account_POC_Firstname__c)) {
+            acc.Account_POC_Firstname__c = req.user.first_name;
+        }
+
         // uLab_Acct_Number__c skipped in test context (same guard as applyAccountFields).
         if (!Test.isRunningTest() && String.isNotBlank(req.org_id)) {
             acc.uLab_Acct_Number__c = Decimal.valueOf(req.org_id);
@@ -499,6 +517,7 @@ global with sharing class UdcOnboardingService {
         con.LastName     = req.user.last_name;
         con.Email        = req.user.email;
         con.Phone        = req.user.phone;
+        con.MobilePhone  = req.user.cell_phone;
 
         // user_type mapping: 'Customer Account Owner' → 'Account Owner'
         if (req.user.user_type == 'Customer Account Owner') {
@@ -519,6 +538,12 @@ global with sharing class UdcOnboardingService {
         con.MailingCountry    = req.user.mailing_country;
         con.MailingState      = req.user.mailing_state;
         con.MailingPostalCode = req.user.mailing_zipcode;
+
+        // Additional fields requested in UDC-4114
+        if (String.isNotBlank(req.tou_accepted_flag)) { con.uLab_Systems_Account_Agreement_Signed__c = (req.tou_accepted_flag == 'true'); }
+        if (String.isNotBlank(req.tou_updated_ts)) {
+            con.Sales_Informed_Agreement_Signed__c = Date.valueOf(req.tou_updated_ts);
+        }
 
         return con;
     }
