@@ -312,7 +312,7 @@ global with sharing class UdcOnboardingService {
         List<Account> existing = [
             SELECT Id, RecordTypeId, Name, Type, Account_Status__c, Phone,
                    Is_Parent__c, Signature_Required__c, Out_of_Service_Area__c,
-                   UDC_Onboarding__c, Account_Email__c, Account_POC_Firstname__c,
+                   UDC_Onboarding__c, Account_Email__c, Account_POC__c,
                    ShippingAddressID__c, ShippingStreet, ShippingCity, ShippingCountry, ShippingState, ShippingPostalCode,
                    BillingAddressID__c, BillingStreet, BillingCity, BillingCountry, BillingState, BillingPostalCode
             FROM Account
@@ -421,7 +421,7 @@ global with sharing class UdcOnboardingService {
         acc.Cloud_Assignment__c = Date.today();
         acc.Date_Added_to_Portal__c = Date.today();
         acc.Account_Email__c = req.user.email;
-        acc.Account_POC_Firstname__c = req.user.first_name;
+        acc.Account_POC__c = req.user.last_name;
 
         // uLab_Acct_Number__c is skipped in test context: the "NFA Create" workflow
         // fires when this field is set and references a cross-reference record that is
@@ -484,8 +484,8 @@ global with sharing class UdcOnboardingService {
         if (String.isBlank(acc.Account_Email__c)) {
             acc.Account_Email__c = req.user.email;
         }
-        if (String.isBlank(acc.Account_POC_Firstname__c)) {
-            acc.Account_POC_Firstname__c = req.user.first_name;
+        if (String.isBlank(acc.Account_POC__c)) {
+            acc.Account_POC__c = req.user.last_name;
         }
 
         // uLab_Acct_Number__c skipped in test context (same guard as applyAccountFields).
